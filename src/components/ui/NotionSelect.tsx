@@ -40,6 +40,7 @@ type NotionSelectProps = {
   allowCreate?: boolean;
   placeholder?: string;
   className?: string;
+  tagsPerRow?: number;
 };
 
 export function NotionSelect({
@@ -50,7 +51,8 @@ export function NotionSelect({
   multiple = false,
   allowCreate = false,
   placeholder = '',
-  className
+  className,
+  tagsPerRow,
 }: NotionSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -64,10 +66,28 @@ export function NotionSelect({
   useEffect(() => {
     if (isOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      const width = 280;
+      const height = 300; // approx max-height
+
+      let top = rect.bottom + 4;
+      if (rect.bottom + height > window.innerHeight && rect.top > height) {
+        top = rect.top - height - 4;
+      }
+
+      let left = rect.left;
+      if (rect.left + width > window.innerWidth) {
+        left = rect.right - width;
+      }
+
+      if (left < 4) left = 4;
+      if (left + width > window.innerWidth - 4) left = window.innerWidth - width - 4;
+      if (top < 4) top = 4;
+      if (top + height > window.innerHeight - 4) top = window.innerHeight - height - 4;
+
       setDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: 280,
+        top,
+        left,
+        width,
       });
     } else {
       setActiveMenu(null);
@@ -139,38 +159,67 @@ export function NotionSelect({
         ref={triggerRef}
         onClick={() => setIsOpen(true)}
         className={cn(
-          "min-h-[44px] sm:min-h-[28px] py-2 sm:py-1 px-3 sm:px-2 border border-transparent hover:bg-slate-100 rounded cursor-pointer flex flex-wrap gap-1 items-center",
+          "min-h-[44px] sm:min-h-[28px] py-2 sm:py-1 px-3 sm:px-2 border border-transparent hover:bg-slate-100 rounded cursor-pointer gap-1 items-center",
+          tagsPerRow ? "flex flex-col items-start" : "flex flex-wrap",
           className
         )}
       >
         {selectedValues.length === 0 && (
           <span className="text-slate-400 text-xs">{placeholder}</span>
         )}
-        {selectedValues.map(val => {
-          const opt = options.find(o => o.value === val) || { label: val, value: val };
-          const colors = getNotionColor(opt.label);
-          return (
-            <div 
-              key={val} 
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[13px] sm:text-[11px] whitespace-nowrap", colors.bg, colors.text)}
-            >
-              {opt.label}
-              <button 
-                onClick={(e) => handleRemove(e, val)}
-                className="hover:bg-black/10 rounded-full p-1.5 sm:p-0.5 ml-0.5"
+        {tagsPerRow ? (
+          Array.from({ length: Math.ceil(selectedValues.length / tagsPerRow) }).map((_, i) => {
+            const chunk = selectedValues.slice(i * tagsPerRow, i * tagsPerRow + tagsPerRow);
+            return (
+              <div key={i} className="flex gap-1">
+                {chunk.map(val => {
+                  const opt = options.find(o => o.value === val) || { label: val, value: val };
+                  const colors = getNotionColor(opt.label);
+                  return (
+                    <div 
+                      key={val} 
+                      className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[13px] sm:text-[11px] whitespace-nowrap", colors.bg, colors.text)}
+                    >
+                      {opt.label}
+                      <button 
+                        onClick={(e) => handleRemove(e, val)}
+                        className="hover:bg-black/10 rounded-full p-1.5 sm:p-0.5 ml-0.5"
+                      >
+                        <X className="w-3 h-3 sm:w-2.5 sm:h-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })
+        ) : (
+          selectedValues.map(val => {
+            const opt = options.find(o => o.value === val) || { label: val, value: val };
+            const colors = getNotionColor(opt.label);
+            return (
+              <div 
+                key={val} 
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[13px] sm:text-[11px] whitespace-nowrap", colors.bg, colors.text)}
               >
-                <X className="w-3 h-3 sm:w-2.5 sm:h-2.5" />
-              </button>
-            </div>
-          );
-        })}
+                {opt.label}
+                <button 
+                  onClick={(e) => handleRemove(e, val)}
+                  className="hover:bg-black/10 rounded-full p-1.5 sm:p-0.5 ml-0.5"
+                >
+                  <X className="w-3 h-3 sm:w-2.5 sm:h-2.5" />
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {isOpen && createPortal(
         <>
         <div className="fixed inset-0 bg-black/20 z-[90] sm:hidden" onClick={() => setIsOpen(false)} />
         <div 
-          className="notion-select-dropdown fixed inset-x-4 bottom-4 top-[20%] sm:bottom-auto sm:inset-auto sm:absolute z-[100] bg-white rounded-xl sm:rounded-md shadow-2xl sm:shadow-lg border border-slate-200 py-2 flex flex-col text-sm sm:max-h-[300px] overflow-hidden"
+          className="notion-select-dropdown fixed inset-x-4 bottom-4 top-[20%] sm:bottom-auto sm:inset-auto sm:fixed z-[100] bg-white rounded-xl sm:rounded-md shadow-2xl sm:shadow-lg border border-slate-200 py-2 flex flex-col text-sm sm:max-h-[300px] overflow-hidden"
           style={window.innerWidth < 640 ? {} : { top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
         >
           {showDeleteConfirm ? (

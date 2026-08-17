@@ -47,7 +47,7 @@ VITE_FIREBASE_MEASUREMENT_ID="your_measurement_id"
 1.  **Authentication (認証):**
     *   ログイン方法として「Google」を有効化します。
     *   必ず「プロジェクトのサポートメール」を設定してください。
-    *   「設定」タブの「承認済みドメイン」に、アプリを公開するURL（例: `your-app.netlify.app` や `ah123-song.ai.studio`）を追加してください。
+    *   「設定」タブの「承認済みドメイン」に、アプリを公開するURL（例: `your-app.netlify.app`）を追加してください。
 2.  **Firestore Database:**
     *   データベースを作成し、「ルール」タブで以下のセキュリティルールを設定して公開してください。（これにより本人しかデータを読み書きできないように保護されます）
 

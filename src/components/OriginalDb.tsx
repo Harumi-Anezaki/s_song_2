@@ -123,15 +123,12 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     return computedSingers.filter(s => s.name.toLowerCase().includes(lowerQ));
   }, [computedSingers, searchQuery]);
 
-  const allGenres = Array.from(new Set([...(state.customGenres || []), ...state.songs.flatMap(s => typeof s.genre === 'string' ? [s.genre] : (s.genre || []))]));
-  const allUsages = Array.from(new Set([...(state.customUsages || []), ...state.songs.flatMap(s => typeof s.usage === 'string' ? [s.usage] : (s.usage || []))]));
   const allLocations = Array.from(new Set(state.songs.map(s => s.location).filter(Boolean)));
-  const allEvaluations = Array.from(new Set([...(state.customEvaluations || []), ...state.songs.map(s => s.evaluation1).filter(Boolean)]));
 
-  const genreOptions = [...allGenres, '沖縄', 'HIPHOP', 'アイドル'].filter((v, i, a) => a.indexOf(v) === i).map(g => ({ label: g, value: g }));
-  const usageOptions = [...allUsages, '盛上', '高音練習', 'おはこ'].filter((v, i, a) => a.indexOf(v) === i).map(u => ({ label: u, value: u }));
+  const genreOptions = (state.customGenres || []).map(g => ({ label: g, value: g }));
+  const usageOptions = (state.customUsages || []).map(u => ({ label: u, value: u }));
   const locationOptions = allLocations.map(l => ({ label: l, value: l }));
-  const evaluationOptions = allEvaluations.map(e => ({ label: e, value: e }));
+  const evaluationOptions = (state.customEvaluations || []).map(e => ({ label: e, value: e }));
   const singerOptions = state.singers.map(s => ({ label: s.name, value: s.id }));
 
   const { deleteGlobalTag } = useStore();
@@ -255,7 +252,6 @@ function DragHeader({ col, collapsedColumns, onToggleCollapse, draggedColumn, on
     >
       <div className="flex items-center gap-2 justify-between">
         <div className="flex items-center gap-1">
-          <GripVertical className="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab" />
           <span>{col.label}</span>
         </div>
         {col.collapsible && (
@@ -269,7 +265,7 @@ function DragHeader({ col, collapsedColumns, onToggleCollapse, draggedColumn, on
 }
 
 const SONG_DEF = [
-  { id: 'actions', label: '操作', className: 'px-4 py-3 whitespace-nowrap w-16' },
+  { id: 'actions', label: '🗑️', className: 'px-4 py-3 whitespace-nowrap w-16' },
   { id: 'title', label: '曲名', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-[250px] min-w-[250px]' },
   { id: 'id', label: 'ID', className: 'px-4 py-3 whitespace-nowrap w-24' },
   { id: 'mainSingerId', label: 'メイン歌手', collapsible: true, className: 'px-4 py-3 whitespace-nowrap min-w-[150px]' },

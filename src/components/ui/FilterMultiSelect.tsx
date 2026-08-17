@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Check, X, Search } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 interface Option {
   label: string;
@@ -17,18 +18,43 @@ export function FilterMultiSelect({ options, value, onChange, placeholder = '選
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   const selectedValues = useMemo(() => value.split(',').map(v => v.trim()).filter(Boolean), [value]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current && 
+        !containerRef.current.contains(event.target as Node) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(event.target as Node))
+      ) {
         setIsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const height = 300; // approx max-height
+      
+      let top = rect.bottom + 4;
+      // If it goes off the bottom of the screen, show it above
+      if (rect.bottom + height > window.innerHeight && rect.top > height) {
+        top = rect.top - height - 4;
+      }
+      
+      setDropdownPos({
+        top,
+        left: rect.left,
+        width: rect.width
+      });
+    }
+  }, [isOpen, selectedValues]);
 
   const toggleOption = (optValue: string) => {
     const newSelected = selectedValues.includes(optValue)
@@ -67,8 +93,12 @@ export function FilterMultiSelect({ options, value, onChange, placeholder = '選
         })}
       </div>
 
-      {isOpen && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-md overflow-hidden flex flex-col max-h-[300px]">
+      {isOpen && createPortal(
+        <div 
+          ref={dropdownRef}
+          className="fixed z-[9999] bg-white border border-slate-200 shadow-xl rounded-md overflow-hidden flex flex-col max-h-[300px]"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+        >
           <div className="p-2 border-b border-slate-100 flex items-center gap-2 text-slate-500 bg-slate-50/50">
             <Search className="w-4 h-4 shrink-0" />
             <input 
@@ -101,7 +131,8 @@ export function FilterMultiSelect({ options, value, onChange, placeholder = '選
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

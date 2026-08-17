@@ -3,14 +3,14 @@ export async function searchYoutube(keyword: string, minViews: number, apiKey: s
 
   let allSearchItems: any[] = [];
   let nextPageToken = '';
-  const maxTotalResults = 500;
+  const maxTotalResults = 100;
 
-  // 1. Fetch up to 300 search results using pagination
+  // 1. Fetch up to 100 search results using pagination
   while (allSearchItems.length < maxTotalResults) {
     const pageTokenParam = nextPageToken ? `&pageToken=${nextPageToken}` : '';
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(
-      keyword
-    )}&type=video&maxResults=50&key=${apiKey}${pageTokenParam}`;
+      keyword + ' -shorts'
+    )}&type=video&maxResults=50&order=viewCount&key=${apiKey}${pageTokenParam}`;
 
     const searchRes = await fetch(searchUrl);
     if (!searchRes.ok) {
@@ -73,7 +73,8 @@ export async function searchYoutube(keyword: string, minViews: number, apiKey: s
     
     // 元の再生回数制限
     let requiredViews = 0;
-    if (minViews === 10000000) requiredViews = 8000000;
+    if (minViews === 1000000) requiredViews = 800000;
+    else if (minViews === 10000000) requiredViews = 8000000;
     else if (minViews === 100000000) requiredViews = 80000000;
     
     return r.viewCount >= requiredViews;

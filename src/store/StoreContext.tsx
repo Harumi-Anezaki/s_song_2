@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { auth, db, onAuthStateChanged, User } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, rtdb, onAuthStateChanged, User } from '../lib/firebase';
+import { ref, get, set, child } from 'firebase/database';
 import { AppState, Song, Singer, LinkedDbView } from '../types';
+import SeedData from './SeedData.json';
 import { generateId } from '../lib/utils';
 import { differenceInDays, parseISO } from 'date-fns';
 
@@ -41,8 +42,8 @@ const defaultState: AppState = {
   uiState: {
     isSidebarOpen: true,
     activeTab: 'youtube',
-    
   },
+  ...(SeedData as Partial<AppState>), // シードデータをマージ
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -73,10 +74,9 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       if (currentUser) {
         // Load from firebase
         try {
-          const docRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
+          const snapshot = await get(child(ref(rtdb), `users/${currentUser.uid}`));
+          if (snapshot.exists()) {
+            const data = snapshot.val();
             if (data.appState) {
               const parsed = JSON.parse(data.appState);
               setState(prevState => ({
@@ -87,10 +87,11 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
             }
           }
         } catch (err) {
-          console.error('Failed to load from firebase', err);
+          console.error('Failed to load from firebase RTDB', err);
         }
       }
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -100,10 +101,13 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       if (user) {
         setSyncStatus('syncing');
         const timer = setTimeout(() => {
-          setDoc(doc(db, 'users', user.uid), { appState: JSON.stringify(state), updatedAt: new Date().toISOString() })
+          set(ref(rtdb, `users/${user.uid}`), {
+            appState: JSON.stringify(state),
+            updatedAt: new Date().toISOString()
+          })
             .then(() => setSyncStatus('success'))
             .catch((err) => {
-              console.error('Sync error', err);
+              console.error('Sync error RTDB', err);
               setSyncStatus('error');
             });
         }, 1500);

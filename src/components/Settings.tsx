@@ -1,13 +1,18 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store/StoreContext';
-import { Download, Upload, Save, Key, User as UserIcon, RefreshCw, LogOut, LogIn } from 'lucide-react';
+import { Download, Upload, Save, Key, User as UserIcon, RefreshCw, LogOut, LogIn, Trash2, AlertTriangle } from 'lucide-react';
 import { signInWithGoogle, logout } from '../lib/firebase';
 
 export default function Settings() {
-  const { state, updateSettings, exportData, importData, user, syncStatus } = useStore();
+  const { state, setState, updateSettings, exportData, importData, user, syncStatus } = useStore();
   const [apiKey, setApiKey] = useState(state.youtubeApiKey || '');
   const [saveMessage, setSaveMessage] = useState('');
+  const [resetConfirm, setResetConfirm] = useState<'all' | 'songs' | 'singers' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setApiKey(state.youtubeApiKey || '');
+  }, [state.youtubeApiKey]);
 
   const handleSave = () => {
     updateSettings('youtubeApiKey', apiKey);
@@ -29,7 +34,6 @@ export default function Settings() {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -41,6 +45,24 @@ export default function Settings() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
+  };
+
+  const handleReset = (type: 'all' | 'songs' | 'singers') => {
+    if (resetConfirm !== type) {
+      setResetConfirm(type);
+      setTimeout(() => setResetConfirm(null), 3000);
+      return;
+    }
+    
+    setState(s => {
+      const updates: any = {};
+      if (type === 'all' || type === 'songs') updates.songs = [];
+      if (type === 'all' || type === 'singers') updates.singers = [];
+      return { ...s, ...updates };
+    });
+    setResetConfirm(null);
+    setSaveMessage('データをリセットしました。');
+    setTimeout(() => setSaveMessage(''), 3000);
   };
 
   return (
@@ -167,6 +189,42 @@ export default function Settings() {
           />
         </div>
       </div>
+
+      <div className="bg-white border border-red-200 rounded-lg p-6 shadow-sm relative overflow-hidden mt-8">
+        <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+        <h3 className="text-sm font-bold text-red-600 mb-4 flex items-center gap-2 uppercase tracking-wider">
+          <Trash2 className="w-5 h-5" />
+          データリセット
+        </h3>
+        <p className="text-xs text-slate-600 mb-6">
+          登録された曲や歌手のデータを削除します。この操作は元に戻せません。
+        </p>
+        
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full">
+          <button
+            onClick={() => handleReset('all')}
+            className={`px-4 py-3 sm:py-2 rounded-md text-base sm:text-xs font-bold transition-all flex items-center gap-2 w-full sm:w-auto justify-center ${resetConfirm === 'all' ? 'bg-red-600 hover:bg-red-700 text-white shadow-sm' : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'}`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            {resetConfirm === 'all' ? '本当に全て削除しますか？' : '全て'}
+          </button>
+          
+          <button
+            onClick={() => handleReset('songs')}
+            className={`px-4 py-3 sm:py-2 rounded-md text-base sm:text-xs font-medium transition-all flex items-center gap-2 w-full sm:w-auto justify-center ${resetConfirm === 'songs' ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300'}`}
+          >
+            {resetConfirm === 'songs' ? '確認: 曲のみ削除' : '曲のみリセット'}
+          </button>
+
+          <button
+            onClick={() => handleReset('singers')}
+            className={`px-4 py-3 sm:py-2 rounded-md text-base sm:text-xs font-medium transition-all flex items-center gap-2 w-full sm:w-auto justify-center ${resetConfirm === 'singers' ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300'}`}
+          >
+            {resetConfirm === 'singers' ? '確認: 歌手のみ削除' : '歌手のみリセット'}
+          </button>
+        </div>
+      </div>
+
         </div>
       </section>
     </div>

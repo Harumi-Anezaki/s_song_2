@@ -106,25 +106,55 @@ export function calculateSimilarity(
   // Normalize titles (strip bracket contents, pass channel name to strip it)
   const base1 = stripBracketContents(vid1.title);
   const base2 = stripBracketContents(vid2.title);
-  const norm1 = normalizeTitle(base1, keyword, vid1.channel);
-  const norm2 = normalizeTitle(base2, keyword, vid2.channel);
+  
+  const norm1_full = normalizeTitle(base1, keyword, vid1.channel);
+  const norm2_full = normalizeTitle(base2, keyword, vid2.channel);
 
-  // Title similarity (max 60)
-  const { score: titleScore, overlap } = calculateStringSimilarity(norm1, norm2);
-  score += titleScore * 0.75;
-  if (titleScore >= 80) {
-    reasons.push(`タイトル一致(${Math.round(titleScore)}%)`);
-  } else if (titleScore >= 60) {
-    reasons.push(`タイトル部分一致(${Math.round(titleScore)}%)`);
+  // Split by common separators (- | / ~) to handle "Artist - Title" formats
+  const parts1 = [vid1.title, ...vid1.title.split(/[-|/〜~]/)].map(s => normalizeTitle(stripBracketContents(s), keyword, vid1.channel)).filter(s => s.length > 2);
+  const parts2 = [vid2.title, ...vid2.title.split(/[-|/〜~]/)].map(s => normalizeTitle(stripBracketContents(s), keyword, vid2.channel)).filter(s => s.length > 2);
+  
+  if (parts1.length === 0) parts1.push(norm1_full);
+  if (parts2.length === 0) parts2.push(norm2_full);
+
+  let bestTitleScore = 0;
+  let bestOverlap = 0;
+  let bestLengthDiff = 999;
+
+  for (const p1 of parts1) {
+    for (const p2 of parts2) {
+      const { score: s, overlap: o } = calculateStringSimilarity(p1, p2);
+      if (s > bestTitleScore) {
+        bestTitleScore = s;
+        bestOverlap = o;
+        bestLengthDiff = Math.abs(p1.length - p2.length);
+      }
+    }
+  }
+
+  // Fallback to full title similarity if part matching didn't yield good results
+  const fullMatch = calculateStringSimilarity(norm1_full, norm2_full);
+  if (fullMatch.score > bestTitleScore) {
+    bestTitleScore = fullMatch.score;
+    bestOverlap = fullMatch.overlap;
+    bestLengthDiff = Math.abs(norm1_full.length - norm2_full.length);
+  }
+
+  score += bestTitleScore * 0.75;
+
+  if (bestTitleScore >= 80) {
+    reasons.push(`タイトル一致(${Math.round(bestTitleScore)}%)`);
+  } else if (bestTitleScore >= 60) {
+    reasons.push(`タイトル部分一致(${Math.round(bestTitleScore)}%)`);
   }
   
   // 完全な包含(overlap)がある場合でも、タイトルの長さが大きく違う場合は別曲とみなす
-  const lengthDiff = Math.abs(norm1.length - norm2.length);
-  if (overlap >= 95 && lengthDiff <= 10) {
+  if (bestOverlap >= 95 && bestLengthDiff <= 10) {
     score += 15; // わずかな表記揺れや余分な文字程度の差なら加点
-    if (titleScore < 80) reasons.push(`タイトル強い部分一致`);
-  } else if (overlap >= 95 && lengthDiff > 10) {
+    if (bestTitleScore < 80) reasons.push(`タイトル強い部分一致`);
+  } else if (bestOverlap >= 95 && bestLengthDiff > 10) {
     // 逆に長さが大きく違うのに包含されている場合 (例: "Love Me" と "As Long As You Love Me")
+    // パートマッチによってこれが起きにくくなっているが、念のため残す
     score -= 20;
     warnings.push('タイトル長が大きく異なり別曲の可能性');
   }
@@ -136,30 +166,21 @@ export function calculateSimilarity(
   }
 
   // Duration closeness (max 25)
-  const durationDiff = Math.abs(vid1.duration - vid2.duration);
-  if (durationDiff <= 2) {
-    score += 25;
-    reasons.push('再生時間が完全に一致');
-  } else if (durationDiff <= 5) {
-    score += 15;
-    reasons.push('再生時間がほぼ同じ');
-  } else if (durationDiff <= 20) {
-    score += 7;
-    reasons.push('再生時間が近い');
-  } else if (durationDiff >= 60) {
-    warnings.push('動画時間の差が60秒以上ある');
-  }
-
-  // Channel match (max 10)
-  if (vid1.channel === vid2.channel) {
-    score += 10;
-    reasons.push('チャンネル名が一致');
-  } else if (keyword && (vid1.channel.toLowerCase().includes(keyword.toLowerCase()) || vid2.channel.toLowerCase().includes(keyword.toLowerCase()))) {
-    // One channel matches keyword, but not the other
-    if (!vid1.channel.toLowerCase().includes(keyword.toLowerCase()) || !vid2.channel.toLowerCase().includes(keyword.toLowerCase())) {
-       warnings.push('チャンネル名と推定歌手名が大きく異なる');
+  if (vid1.duration > 0 && vid2.duration > 0) {
+    const durationDiff = Math.abs(vid1.duration - vid2.duration);
+    if (durationDiff <= 2) {
+      score += 25;
+      reasons.push('再生時間が完全に一致');
+    } else if (durationDiff <= 5) {
+      score += 15;
+      reasons.push('再生時間がほぼ同じ');
+    } else if (durationDiff <= 20) {
+      score += 7;
+      reasons.push('再生時間が近い');
     }
   }
+
+  // Channel matching logic removed as per user requirement.
 
   // Versions check
   const v1 = extractVersions(vid1.title);
@@ -173,6 +194,10 @@ export function calculateSimilarity(
     const inV1 = v1.includes(v);
     const inV2 = v2.includes(v);
     if (inV1 !== inV2) {
+      if (v === 'short ver') {
+        continue;
+      }
+      
       score -= 25;
       warnings.push(`片方のみに「${v}」が含まれる`);
       

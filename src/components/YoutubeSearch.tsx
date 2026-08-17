@@ -31,9 +31,10 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
     setResults(newResults);
   };
   
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [manualSelectedIds, setManualSelectedIds] = useState<Set<string>>(new Set());
-  const [comparingGroup, setComparingGroup] = useState<SimilarityResult[] | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(state.uiState?.youtubeSearchSelectedIds || []));
+  const [manualSelectedIds, setManualSelectedIds] = useState<Set<string>>(new Set(state.uiState?.youtubeSearchManualSelectedIds || []));
+  const [comparingGroup, setComparingGroup] = useState<SimilarityResult[] | null>(state.uiState?.youtubeSearchComparingGroup || null);
+  const [viewingDbSong, setViewingDbSong] = useState<any | null>(null);
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error' | 'warning'} | null>(null);
 
   const showMessage = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -78,34 +79,79 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
       const apiResults = await searchYoutube(keyword, minViews, state.youtubeApiKey);
       const computedSongs = getComputedSongs();
 
+      const getSourcesForSong = (song: any) => {
+        const sources = [];
+        
+        // Use individual mapped videos for similarity comparison
+        if (song.urlTitles && song.urlDurationSeconds && song.youtubeIds.length > 0) {
+          song.youtubeIds.forEach((yid: string, i: number) => {
+             sources.push({ 
+               title: song.urlTitles[i] || song.title, 
+               duration: song.urlDurationSeconds[i] || 0, 
+               channel: '' 
+             });
+          });
+        } else {
+          // Fallback if no underlying videos are found (should not happen for valid DB entries)
+          sources.push({ title: song.title, duration: 0, channel: '' });
+        }
+        return sources;
+      };
+
+      const getSourcesForRes = (res: YoutubeSearchResult) => {
+        const song = computedSongs.find(s => s.youtubeIds.includes(res.id));
+        if (song) return getSourcesForSong(song);
+        return [{ title: res.title, duration: res.durationSeconds, channel: res.channelTitle }];
+      };
+
+      const getMaxSimilarity = (sourcesA: any[], sourcesB: any[]) => {
+        let maxScore = -1;
+        let bestResult = { score: 0, reasons: [] as string[], warnings: [] as string[] };
+        for (const a of sourcesA) {
+          for (const b of sourcesB) {
+             const res = calculateSimilarity(a, b, keyword);
+             if (res.score > maxScore) {
+                maxScore = res.score;
+                bestResult = res;
+             }
+          }
+        }
+        return bestResult;
+      };
+
       // Calculate similarities and groups
       const processedResults = apiResults.map((res: YoutubeSearchResult) => {
         const candidates: SimilarityResult[] = [];
+        const resSources = getSourcesForRes(res);
         
         // Compare with existing DB
         computedSongs.forEach((song) => {
           if (!song.youtubeIds || song.youtubeIds.length === 0) return;
           if (song.youtubeIds.includes(res.id)) return; // Don't match if it's already exactly this video
           
-          const { score, reasons, warnings } = calculateSimilarity(
-            { title: res.title, duration: res.durationSeconds, channel: res.channelTitle },
-            { title: song.title, duration: 240 /* dummy duration since DB might not have it */, channel: '' },
-            keyword
-          );
-          if (score >= 70) {
+          const targetSources = getSourcesForSong(song);
+          const { score, reasons, warnings } = getMaxSimilarity(resSources, targetSources);
+          
+          let avgDuration = 0;
+          if (song.urlDurationSeconds && song.urlDurationSeconds.length > 0) {
+            const sum = song.urlDurationSeconds.reduce((a: number, b: number) => a + b, 0);
+            avgDuration = Math.round(sum / song.urlDurationSeconds.length);
+          }
+
+          if (score >= 60) {
             candidates.push({
               targetId: song.id,
               targetYoutubeId: song.youtubeIds[0],
-              targetTitle: song.title,
+              targetTitle: song.title, // ここをDB上の曲名を使用するように変更
               targetUrl: song.urls[0] || '',
               targetViewCount: song.viewCount,
               targetPublishedAt: song.releaseDate,
               targetChannelTitle: 'DB登録済み',
-              targetDurationSeconds: 0,
+              targetDurationSeconds: avgDuration,
               score,
               reasons,
               warnings,
-              isAlreadyMerged: false,
+              isAlreadyMerged: true, // DB登録済みの曲は自身が既に登録済みであるため選択不可とする
               isDbEntry: true,
             });
           }
@@ -116,12 +162,11 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
           if (res.id === otherRes.id) return;
           // DBに既に登録されているYouTubeIDの場合は、DB登録済みの候補として挙がるため検索結果候補からは除外
           if (computedSongs.some(song => song.youtubeIds?.includes(otherRes.id))) return;
-          const { score, reasons, warnings } = calculateSimilarity(
-            { title: res.title, duration: res.durationSeconds, channel: res.channelTitle },
-            { title: otherRes.title, duration: otherRes.durationSeconds, channel: otherRes.channelTitle },
-            keyword
-          );
-          if (score >= 70) {
+          
+          const targetSources = [{ title: otherRes.title, duration: otherRes.durationSeconds, channel: otherRes.channelTitle }];
+          const { score, reasons, warnings } = getMaxSimilarity(resSources, targetSources);
+          
+          if (score >= 65) {
             candidates.push({
               targetId: otherRes.id,
               targetYoutubeId: otherRes.id,
@@ -134,7 +179,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               score,
               reasons,
               warnings,
-              isAlreadyMerged: false,
+              isAlreadyMerged: computedSongs.some(s => s.youtubeIds.includes(otherRes.id)),
             });
           }
         });
@@ -167,8 +212,13 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
         const idx = song.youtubeIds.indexOf(r.id);
         if (idx !== -1) {
           const newUrlViewCounts = song.urlViewCounts ? [...song.urlViewCounts] : song.urls.map(() => 0);
+          const newUrlDurationSeconds = song.urlDurationSeconds ? [...song.urlDurationSeconds] : song.urls.map(() => 0);
+          const newUrlTitles = song.urlTitles ? [...song.urlTitles] : song.urls.map(() => '');
           const oldIndividualView = newUrlViewCounts[idx] || 0;
+          
           newUrlViewCounts[idx] = r.viewCount;
+          newUrlDurationSeconds[idx] = r.durationSeconds;
+          newUrlTitles[idx] = r.title;
           
           let alarmMsg = song.alarm || '';
           // 個別再生数が前回より減った場合のアラーム
@@ -181,6 +231,8 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
           updateSong(song.id, { 
             viewCount: newTotalViews, 
             urlViewCounts: newUrlViewCounts,
+            urlDurationSeconds: newUrlDurationSeconds,
+            urlTitles: newUrlTitles,
             alarm: alarmMsg
           });
           updateCount++;
@@ -211,6 +263,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
       urls: [r.url],
       urlTitles: [r.title],
       urlViewCounts: [r.viewCount],
+      urlDurationSeconds: [r.durationSeconds],
       releaseDate: r.publishedAt,
       viewCount: r.viewCount,
     }));
@@ -228,6 +281,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
   };
 
   const openCompare = (candidates: SimilarityResult[], sourceId: string) => {
+    const isSourceDbEntry = state.songs.some(s => s.youtubeIds.includes(sourceId));
     setComparingGroup([{
       // Self
       targetId: sourceId,
@@ -241,31 +295,39 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
       score: 100,
       reasons: [],
       warnings: [],
-      isAlreadyMerged: false,
-      isDbEntry: state.songs.some(s => s.youtubeIds.includes(sourceId)),
+      isAlreadyMerged: isSourceDbEntry,
+      isDbEntry: isSourceDbEntry,
       isSelf: true,
-    }, ...candidates.map(c => ({...c, isSelf: false}))]);
+    }, ...candidates.map(c => ({
+      ...c,
+      isSelf: false,
+      isAlreadyMerged: c.isAlreadyMerged || state.songs.some(s => s.youtubeIds.includes(c.targetId))
+    }))]);
   };
 
   const handleManualMergePreview = () => {
     const selectedResults = results.filter(r => manualSelectedIds.has(r.id));
     if (selectedResults.length < 2) return;
 
-    const group: SimilarityResult[] = selectedResults.map(r => ({
-      targetId: r.id,
-      targetYoutubeId: r.id,
-      targetTitle: r.title,
-      targetUrl: r.url,
-      targetViewCount: r.viewCount,
-      targetPublishedAt: r.publishedAt,
-      targetChannelTitle: r.channelTitle,
-      targetDurationSeconds: r.durationSeconds,
-      score: 100,
-      reasons: ['手動選択による統合'],
-      warnings: [],
-      isAlreadyMerged: false,
-      isSelf: false, // 手動選択時は全員同列に扱う
-    }));
+    const group: SimilarityResult[] = selectedResults.map(r => {
+      const isAlreadyMerged = state.songs.some(s => s.youtubeIds.includes(r.id));
+      return {
+        targetId: r.id,
+        targetYoutubeId: r.id,
+        targetTitle: r.title,
+        targetUrl: r.url,
+        targetViewCount: r.viewCount,
+        targetPublishedAt: r.publishedAt,
+        targetChannelTitle: r.channelTitle,
+        targetDurationSeconds: r.durationSeconds,
+        score: 100,
+        reasons: ['手動選択による統合'],
+        warnings: [],
+        isAlreadyMerged: isAlreadyMerged,
+        isDbEntry: isAlreadyMerged,
+        isSelf: false, // 手動選択時は全員同列に扱う
+      };
+    });
 
     setComparingGroup(group);
     setSelectedIds(new Set(group.map(g => g.targetId)));
@@ -273,38 +335,39 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
 
   const [editingMergedSong, setEditingMergedSong] = useState<any>(null);
 
-  const currentSinger = state.singers.find(s => s.name === keyword);
-  const mergedSongs = currentSinger
-    ? state.songs.filter(s => s.mainSingerId === currentSinger.id && s.youtubeIds.length > 1)
-    : [];
-
-  const handleAddToMerged = (song: any) => {
-    const selectedResults = results.filter(r => manualSelectedIds.has(r.id));
-    if (selectedResults.length === 0) {
-      showMessage('上部のリストから追加したい動画にチェックを入れてください。', 'warning');
-      return;
-    }
-    
-    const newItems = selectedResults.filter(r => !song.youtubeIds.includes(r.id));
-    const newYoutubeIds = [...song.youtubeIds, ...newItems.map(r => r.id)];
-    const newUrls = [...(song.urls || []), ...newItems.map(r => r.url)];
-    const existingUrlTitles = (song.urls || []).map((_: any, i: number) => song.urlTitles?.[i] || song.title || '無題');
-    const newUrlTitles = [...existingUrlTitles, ...newItems.map(r => r.title)];
-    const existingUrlViewCounts = song.urlViewCounts || song.urls.map(() => 0);
-    const newUrlViewCounts = [...existingUrlViewCounts, ...newItems.map(r => r.viewCount)];
-    const addedViews = newItems.reduce((acc, r) => acc + r.viewCount, 0);
-
-    updateSong(song.id, {
-      youtubeIds: newYoutubeIds,
-      urls: newUrls,
-      urlTitles: newUrlTitles,
-      urlViewCounts: newUrlViewCounts,
-      viewCount: song.viewCount + addedViews,
+  
+  // Sync local states with global state for export/import compatibility
+  useEffect(() => {
+    updateUiState({
+      youtubeSearchSelectedIds: Array.from(selectedIds),
+      youtubeSearchManualSelectedIds: Array.from(manualSelectedIds),
+      youtubeSearchComparingGroup: comparingGroup,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, manualSelectedIds, comparingGroup]);
 
-    setManualSelectedIds(new Set());
-    showMessage(`${newItems.length}件の動画を「${song.title}」に追加統合しました。`);
-  };
+  useEffect(() => {
+    if (state.uiState?.youtubeSearchSelectedIds) {
+      setSelectedIds(prev => {
+        const next = new Set(state.uiState!.youtubeSearchSelectedIds);
+        if (prev.size !== next.size || [...prev].some(id => !next.has(id))) return next;
+        return prev;
+      });
+    }
+    if (state.uiState?.youtubeSearchManualSelectedIds) {
+      setManualSelectedIds(prev => {
+        const next = new Set(state.uiState!.youtubeSearchManualSelectedIds);
+        if (prev.size !== next.size || [...prev].some(id => !next.has(id))) return next;
+        return prev;
+      });
+    }
+    if (state.uiState?.youtubeSearchComparingGroup !== undefined) {
+      setComparingGroup(state.uiState.youtubeSearchComparingGroup);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.uiState?.youtubeSearchSelectedIds, state.uiState?.youtubeSearchManualSelectedIds, state.uiState?.youtubeSearchComparingGroup]);
+
+  const currentSinger = state.singers.find(s => s.name === keyword);
 
   const handleMerge = () => {
     if (!comparingGroup) return;
@@ -343,6 +406,11 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
       );
       const mergedUrlViewCounts = [...allExistingUrlViewCounts, ...newSelected.map(s => s.targetViewCount)];
       
+      const allExistingUrlDurationSeconds = existingSongsArray.flatMap(s => 
+        s.urlDurationSeconds || s.urls.map(() => 0)
+      );
+      const mergedUrlDurationSeconds = [...allExistingUrlDurationSeconds, ...newSelected.map(s => s.targetDurationSeconds)];
+      
       // Calculate added views from new selections + the views of other merged existing songs
       const addedViews = newSelected.reduce((acc, s) => acc + s.targetViewCount, 0) + 
                          existingSongsArray.slice(1).reduce((acc, s) => acc + s.viewCount, 0);
@@ -352,6 +420,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
         urls: mergedUrls,
         urlTitles: mergedUrlTitles,
         urlViewCounts: mergedUrlViewCounts,
+        urlDurationSeconds: mergedUrlDurationSeconds,
         viewCount: targetSong.viewCount + addedViews,
       });
 
@@ -381,6 +450,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
       urls: urls,
       urlTitles: urlTitles,
       urlViewCounts: selected.map(s => s.targetViewCount),
+      urlDurationSeconds: selected.map(s => s.targetDurationSeconds),
       releaseDate: oldestDate,
       viewCount: totalViews,
     }]);
@@ -443,6 +513,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               className="w-full border border-slate-300 rounded px-3 py-3 sm:py-2 min-h-[44px] bg-slate-50 outline-none text-base sm:text-sm"
             >
               <option value={0}>制限なし</option>
+              <option value={1000000}>100万回 (80万回〜)</option>
               <option value={10000000}>1000万回 (800万回〜)</option>
               <option value={100000000}>1億回 (8000万回〜)</option>
             </select>
@@ -471,38 +542,24 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
         </div>
       </header>
 
-      <section className="flex-1 p-6 overflow-hidden flex flex-col gap-6">
+      <section className="flex-1 overflow-hidden flex flex-col">
         {results.length > 0 ? (
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="bg-white flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="overflow-auto flex-1">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1400px]">
+              <table className="w-full text-left border-collapse min-w-[1400px]">
                 <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
                   <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                    <th className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        className="rounded cursor-pointer"
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            const selectable = results.filter(r => !state.excludedYoutubeIds.includes(r.id) && !state.songs.some(s => s.youtubeIds.includes(r.id))).map(r => r.id);
-                            setManualSelectedIds(new Set(selectable));
-                          } else {
-                            setManualSelectedIds(new Set());
-                          }
-                        }}
-                        checked={results.length > 0 && manualSelectedIds.size > 0 && manualSelectedIds.size === results.filter(r => !state.excludedYoutubeIds.includes(r.id) && !state.songs.some(s => s.youtubeIds.includes(r.id))).length}
-                      />
-                    </th>
-                    <th className="px-4 py-3 w-20">操作</th>
-                    <th className="px-4 py-3 w-[250px]">タイトル</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">選択</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px text-center">🗑️</th>
+                    <th className="px-4 py-3 w-full">タイトル</th>
                     <th className="px-4 py-3 w-16">URL</th>
-                    <th className="px-4 py-3 w-32">メイン歌手</th>
-                    <th className="px-4 py-3 w-40">サブ歌手</th>
-                    <th className="px-4 py-3 w-32">再生数</th>
-                    <th className="px-4 py-3 w-28">投稿日</th>
-                    <th className="px-4 py-3 w-40">アカウント</th>
-                    <th className="px-4 py-3 w-24">時間</th>
-                    <th className="px-4 py-3 w-40">類似判定</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">類似</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">メイン歌手</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">サブ歌手</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">再生数</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">投稿日</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">アカウント</th>
+                    <th className="px-4 py-3 whitespace-nowrap w-px">時間</th>
                   </tr>
                 </thead>
                 <tbody className="text-xs divide-y divide-slate-100">
@@ -513,18 +570,48 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                   const isMerged = isRegistered && registeredSong.youtubeIds.length > 1;
                   const candidates = res.similarityCandidates || [];
                   const topCandidate = candidates[0];
-
-                  let simLabel = '候補なし';
                   let simClass = 'text-slate-400';
-                  if (candidates.length > 0) {
-                    simLabel = `類似候補${candidates.length}件`;
-                    simClass = topCandidate.score >= 85 ? 'text-amber-600 font-bold' : 'text-amber-500 font-medium';
-                    if (topCandidate.warnings.length > 0) {
-                      simLabel += ' (要確認)';
+                  let simLabel = '-';
+                  let simActionable = false;
+                  
+                  const hasActionableUnregisteredCandidates = candidates.some(c => {
+                    if (c.isDbEntry) return false;
+                    const dynamicallyAlreadyMerged = c.isAlreadyMerged || state.songs.some(s => s.youtubeIds.includes(c.targetId));
+                    return !dynamicallyAlreadyMerged;
+                  });
+                  
+                  const hasAnyActionableCandidates = candidates.some(c => {
+                    const dynamicallyAlreadyMerged = c.isAlreadyMerged || state.songs.some(s => s.youtubeIds.includes(c.targetId));
+                    return c.isDbEntry || !dynamicallyAlreadyMerged;
+                  });
+
+                  if (isRegistered) {
+                    if (hasActionableUnregisteredCandidates) {
+                      simLabel = '類似';
+                      simActionable = true;
+                      simClass = topCandidate?.score >= 85 ? 'text-amber-600 font-bold' : 'text-amber-500 font-medium';
+                    } else if (isMerged) {
+                      simLabel = '済';
+                      simActionable = false;
+                      simClass = 'text-slate-400 font-bold';
+                    } else {
+                      simLabel = '-';
+                      simActionable = false;
+                      simClass = 'text-slate-300';
+                    }
+                  } else {
+                    if (hasAnyActionableCandidates) {
+                      simLabel = '類似';
+                      simActionable = true;
+                      simClass = topCandidate?.score >= 85 ? 'text-amber-600 font-bold' : 'text-amber-500 font-medium';
+                    } else {
+                      simLabel = '-';
+                      simActionable = false;
+                      simClass = 'text-slate-300';
                     }
                   }
                   
-                  const hasCandidates = candidates.length > 0;
+                  const hasCandidates = hasAnyActionableCandidates;
 
                   return (
                     <tr key={res.id} className={cn(
@@ -548,7 +635,8 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                           }}
                         />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap flex items-center gap-2">
+                      <td className="px-4 py-3 whitespace-nowrap align-middle">
+                        <div className="flex items-center justify-center gap-2">
                         {!isExcluded && !isRegistered && (
                           <div className="flex gap-2">
                             <button
@@ -575,6 +663,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             </button>
                           </div>
                         )}
+                        </div>
                       </td>
                       <td className={cn("px-4 py-3 whitespace-normal break-all w-[250px] min-w-[250px] max-w-[250px]", isMerged ? "font-medium text-purple-800" : isRegistered ? "font-medium text-blue-700" : "font-medium text-slate-700")}>
                         <span className={cn(isExcluded && 'line-through')}>{res.title}</span>
@@ -583,6 +672,25 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                         <a href={res.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
                           開く
                         </a>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        {simActionable ? (
+                          <button
+                            onClick={() => openCompare(candidates, res.id)}
+                            className={cn("hover:underline cursor-pointer", simClass)}
+                          >
+                            {simLabel}
+                          </button>
+                        ) : simLabel === '済' && registeredSong ? (
+                          <button
+                            onClick={() => setViewingDbSong(registeredSong)}
+                            className={cn("hover:underline cursor-pointer", simClass)}
+                          >
+                            {simLabel}
+                          </button>
+                        ) : (
+                          <span className={simClass}>{simLabel}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 min-w-[150px]">
                         {isRegistered && registeredSong ? (
@@ -636,30 +744,17 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                           />
                         )}
                       </td>
-                      <td className={cn("px-4 py-3 whitespace-nowrap text-right font-mono", isExcluded && 'opacity-50')}>
+                      <td className={cn("px-4 py-3 whitespace-nowrap w-px text-right font-mono", isExcluded && 'opacity-50')}>
                         {res.viewCount.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-500">
+                      <td className="px-4 py-3 whitespace-nowrap w-px text-slate-500">
                         {res.publishedAt}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap max-w-[150px] truncate text-slate-500" title={res.channelTitle}>
+                      <td className="px-4 py-3 whitespace-nowrap w-px max-w-[150px] truncate text-slate-500" title={res.channelTitle}>
                         {res.channelTitle}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right">
+                      <td className="px-4 py-3 whitespace-nowrap w-px text-right">
                         {res.durationString}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {hasCandidates ? (
-                          <button
-                            onClick={() => openCompare(candidates, res.id)}
-                            className="flex flex-col text-left hover:underline cursor-pointer"
-                          >
-                            <span className={simClass}>{topCandidate.score}% {simLabel}</span>
-                            {topCandidate.warnings.length > 0 && <span className="text-[9px] text-amber-500 mt-0.5">⚠️ {topCandidate.warnings[0]}</span>}
-                          </button>
-                        ) : (
-                          <span className="text-slate-400 italic">候補なし</span>
-                        )}
                       </td>
                     </tr>
                   );
@@ -686,44 +781,6 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               <p>検索キーワードを入力して動画を取得してください</p>
             </div>
           )
-        )}
-
-        {mergedSongs.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col shrink-0">
-            <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-800">統合済の曲 (DB登録済)</h3>
-              <span className="text-[10px] text-slate-500 font-bold bg-white px-2 py-0.5 rounded border border-slate-200">{mergedSongs.length}件</span>
-            </div>
-            <div className="overflow-auto max-h-48">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2 font-bold w-48">曲名</th>
-                    <th className="px-4 py-2 font-bold">統合数</th>
-                    <th className="px-4 py-2 font-bold">総再生数</th>
-                    <th className="px-4 py-2 font-bold w-32">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {mergedSongs.map(song => (
-                    <tr key={song.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-4 py-2 font-medium text-slate-800">{song.title}</td>
-                      <td className="px-4 py-2 text-slate-600">{song.youtubeIds.length}動画</td>
-                      <td className="px-4 py-2 font-mono text-slate-600">{song.viewCount.toLocaleString()}</td>
-                      <td className="px-4 py-2">
-                        <button
-                          onClick={() => handleAddToMerged(song)}
-                          className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded text-[10px] font-bold transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          選択中の動画を追加統合
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         )}
       </section>
 
@@ -752,13 +809,34 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                 <tbody className="divide-y divide-gray-100">
                   {comparingGroup.map(c => {
                     const isSelected = selectedIds.has(c.targetId);
+                    const dbSong = c.isDbEntry 
+                      ? state.songs.find(s => s.id === c.targetId || s.youtubeIds.includes(c.targetId)) 
+                      : null;
+                    const mergedCount = dbSong ? dbSong.youtubeIds.length : 0;
+                    
+                    let dbSongAvgDuration = 0;
+                    if (dbSong && dbSong.urlDurationSeconds && dbSong.urlDurationSeconds.length > 0) {
+                      const sum = dbSong.urlDurationSeconds.reduce((a, b) => a + b, 0);
+                      dbSongAvgDuration = Math.round(sum / dbSong.urlDurationSeconds.length);
+                    }
+                    
                     return (
-                      <tr key={c.targetId} className={cn('hover:bg-gray-50', c.isAlreadyMerged && 'bg-blue-50/30')}>
-                        <td className="p-3">
+                      <React.Fragment key={c.targetId}>
+                        <tr className={cn(
+                          'hover:bg-gray-50', 
+                          c.isDbEntry && mergedCount > 1 ? 'bg-purple-50/20' : (c.isAlreadyMerged && !c.isSelf ? 'bg-blue-50/30' : '')
+                        )}>
+                          <td 
+                            className={cn(
+                              "p-3 align-middle",
+                              c.isDbEntry && mergedCount > 1 && "border-l-4 border-l-purple-500"
+                            )}
+                            rowSpan={c.isDbEntry && mergedCount > 1 && dbSong ? 2 : 1}
+                          >
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            disabled={c.isAlreadyMerged}
+                            disabled={c.isAlreadyMerged && !c.isDbEntry && !c.isSelf}
                             onChange={(e) => {
                               const newSet = new Set(selectedIds);
                               if (e.target.checked) newSet.add(c.targetId);
@@ -769,13 +847,28 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                           />
                         </td>
                         <td className="p-3 max-w-[200px]">
-                          <a href={c.targetUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline block truncate mb-1">
-                            {c.targetTitle}
-                          </a>
-                          <div className="text-xs text-gray-500 truncate">{c.targetChannelTitle}</div>
+                          {c.isDbEntry && dbSong ? (
+                            <>
+                              <span className="text-blue-600 font-bold block break-words mb-1">
+                                {dbSong.title}
+                              </span>
+                              <div className="text-xs text-gray-500 break-words">DB登録済み</div>
+                            </>
+                          ) : (
+                            <>
+                              <a href={c.targetUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline block break-words mb-1">
+                                {c.targetTitle}
+                              </a>
+                              <div className="text-xs text-gray-500 break-words">{c.targetChannelTitle}</div>
+                            </>
+                          )}
                         </td>
-                        <td className="p-3 font-mono text-right">{c.targetViewCount.toLocaleString()}</td>
-                        <td className="p-3 text-right">{Math.floor(c.targetDurationSeconds/60)}分{c.targetDurationSeconds%60}秒</td>
+                        <td className="p-3 font-mono text-right">
+                          {c.isDbEntry && dbSong ? dbSong.viewCount.toLocaleString() : c.targetViewCount.toLocaleString()}
+                        </td>
+                        <td className="p-3 text-right">
+                          {c.isDbEntry && dbSong ? `${Math.floor(dbSongAvgDuration/60)}分${dbSongAvgDuration%60}秒` : `${Math.floor(c.targetDurationSeconds/60)}分${c.targetDurationSeconds%60}秒`}
+                        </td>
                         <td className="p-3 font-bold text-center">
                           {c.score === 100 ? '-' : `${c.score}%`}
                         </td>
@@ -787,13 +880,34 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             {c.warnings.map((w, i) => <span key={i}>⚠️ {w}</span>)}
                           </div>
                           {c.isSelf && <div className="text-xs text-slate-500 font-bold mt-1">比較の基準 (選択した動画)</div>}
-                          {c.isAlreadyMerged && !c.isSelf && <div className="text-xs text-blue-600 font-bold mt-1">DB登録済のため選択不可</div>}
-                          {c.isDbEntry && !c.isAlreadyMerged && !c.isSelf && <div className="text-xs text-blue-600 font-bold mt-1">DB登録済みの曲 (統合可能)</div>}
+                          {c.isAlreadyMerged && !c.isSelf && !c.isDbEntry && <div className="text-xs text-blue-600 font-bold mt-1">DB登録済のため選択不可</div>}
+                          {c.isDbEntry && !c.isSelf && <div className="text-xs text-blue-600 font-bold mt-1">DB登録済みの曲 (統合可能)</div>}
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
+                      {mergedCount > 1 && dbSong && (
+                        <tr className="bg-purple-50/10">
+                          <td colSpan={5} className="p-0 border-t border-purple-100">
+                            <div className="py-2 pr-4 space-y-1 pl-4">
+                              <div className="text-[10px] font-bold text-purple-600 mb-2">含まれる動画リスト:</div>
+                              {dbSong.urlTitles?.map((title, idx) => (
+                                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-gray-700 bg-white/60 px-3 py-1.5 rounded-sm border border-purple-50/50 hover:bg-white transition-colors">
+                                  <span className="flex-1 min-w-0 mr-4 font-medium break-words" title={title}>{title}</span>
+                                  <div className="flex items-center gap-6 text-gray-500 mt-1 sm:mt-0 shrink-0">
+                                    <span className="font-mono">{dbSong.urlViewCounts?.[idx]?.toLocaleString() || 0}回</span>
+                                    <span>
+                                      {Math.floor((dbSong.urlDurationSeconds?.[idx] || 0) / 60)}分{(dbSong.urlDurationSeconds?.[idx] || 0) % 60}秒
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
               </table>
             </div>
 
@@ -837,6 +951,56 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                 }}
               >
                 保存して閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {viewingDbSong && (
+        <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 sm:p-8">
+          <div className="bg-white border border-slate-200 rounded-lg shadow-xl w-full max-w-3xl flex flex-col max-h-full overflow-hidden text-sm text-slate-900">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{viewingDbSong.title}</h3>
+                <div className="text-xs text-gray-500 mt-1">DB登録済 / 統合動画数: {viewingDbSong.youtubeIds?.length || 1}</div>
+              </div>
+              <button onClick={() => setViewingDbSong(null)} className="text-gray-500 hover:text-gray-700 font-bold p-2 cursor-pointer">
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-auto flex-1 bg-gray-50/50">
+               <div className="space-y-2">
+                 {viewingDbSong.urlTitles?.map((title: string, idx: number) => (
+                   <div key={idx} className="bg-white px-4 py-3 rounded-lg border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                     <div className="flex-1 min-w-0">
+                       <a href={viewingDbSong.urls?.[idx]} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium block break-words">
+                         {title}
+                       </a>
+                     </div>
+                     <div className="flex items-center gap-6 text-gray-500 shrink-0">
+                       <div className="flex flex-col items-end">
+                         <span className="text-[10px] uppercase font-bold text-gray-400">再生数</span>
+                         <span className="font-mono font-medium text-gray-700">{viewingDbSong.urlViewCounts?.[idx]?.toLocaleString() || 0}回</span>
+                       </div>
+                       <div className="flex flex-col items-end">
+                         <span className="text-[10px] uppercase font-bold text-gray-400">時間</span>
+                         <span className="font-medium text-gray-700">
+                           {Math.floor((viewingDbSong.urlDurationSeconds?.[idx] || 0) / 60)}分{(viewingDbSong.urlDurationSeconds?.[idx] || 0) % 60}秒
+                         </span>
+                       </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-200 bg-white flex justify-end">
+              <button
+                onClick={() => setViewingDbSong(null)}
+                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                閉じる
               </button>
             </div>
           </div>

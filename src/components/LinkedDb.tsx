@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, Reorder } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/StoreContext';
 import { LinkedDbView, Filter, Sort, DbType } from '../types';
@@ -303,7 +303,8 @@ export default function LinkedDb() {
   const isMusicMode = state.uiState?.linkedDbIsMusicMode || false;
   const setIsMusicMode = (val: boolean) => updateUiState({ linkedDbIsMusicMode: val });
   const [currentPlaylist, setCurrentPlaylist] = useState<any[]>([]);
-  const [activeViewId, setActiveViewId] = useState<string | null>(state.lastOpenViewId);
+  const activeViewId = state.lastOpenViewId;
+  const setActiveViewId = (id: string | null) => setState(s => ({ ...s, lastOpenViewId: id }));
   const [isSetup, setIsSetup] = useState(false);
   const [showAddViewModal, setShowAddViewModal] = useState(false);
   const searchQuery = state.uiState?.linkedDbSearchQuery || '';
@@ -311,53 +312,22 @@ export default function LinkedDb() {
   const [filteredCount, setFilteredCount] = useState<number>(0);
 
   useEffect(() => {
-    if (state.linkedViews.length > 0 && !activeViewId) {
-      setActiveViewId(state.linkedViews[0].id);
-    } else if (state.linkedViews.length === 0) {
+    if (state.linkedViews.length > 0) {
+      if (!activeViewId || !state.linkedViews.some(v => v.id === activeViewId)) {
+        setActiveViewId(state.linkedViews[0].id);
+      }
+    } else {
       setIsSetup(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.linkedViews, activeViewId]);
 
-  useEffect(() => {
-    if (activeViewId) {
-      setState(s => ({ ...s, lastOpenViewId: activeViewId }));
-    }
-  }, [activeViewId, setState]);
-
-  const [draggedViewId, setDraggedViewId] = useState<string | null>(null);
-
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    setDraggedViewId(id);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (!draggedViewId || draggedViewId === id) return;
-
-    const views = [...state.linkedViews];
-    const draggedIdx = views.findIndex(v => v.id === draggedViewId);
-    const targetIdx = views.findIndex(v => v.id === id);
-
-    if (draggedIdx !== -1 && targetIdx !== -1) {
-      const temp = views[draggedIdx];
-      views[draggedIdx] = views[targetIdx];
-      views[targetIdx] = temp;
-      setState(s => ({ ...s, linkedViews: views }));
-    }
-  };
-
-  const handleDragEnd = () => {
-    setDraggedViewId(null);
-  };
-
   // オプションの抽出
-  const genreOptions = Array.from(new Set([...(state.customGenres || []), ...state.songs.flatMap(s => typeof s.genre === 'string' ? (s.genre ? [s.genre] : []) : (s.genre || [])).filter(Boolean)])).map(g => ({ label: g, value: g }));
-  const usageOptions = Array.from(new Set([...(state.customUsages || []), ...state.songs.flatMap(s => typeof s.usage === 'string' ? (s.usage ? [s.usage] : []) : (s.usage || [])).filter(Boolean)])).map(u => ({ label: u, value: u }));
+  const genreOptions = (state.customGenres || []).map(g => ({ label: g, value: g }));
+  const usageOptions = (state.customUsages || []).map(u => ({ label: u, value: u }));
   const singerOptions = state.singers.map(s => ({ label: s.name, value: s.id }));
-  const locationOptions = [{ label: '日本', value: '日本' }, { label: '海外', value: '海外' }];
-  const evaluationOptions = Array.from(new Set([...(state.customEvaluations || []), ...state.songs.map(s => s.evaluation1).filter(Boolean), '排除'])).map(e => ({ label: e, value: e }));
+  const locationOptions = Array.from(new Set(state.songs.map(s => s.location).filter(Boolean))).map(l => ({ label: l, value: l }));
+  const evaluationOptions = (state.customEvaluations || []).map(e => ({ label: e, value: e }));
 
   const handleDeleteGenre = (val: string) => {
       deleteGlobalTag('genre', val);
@@ -390,34 +360,41 @@ export default function LinkedDb() {
         </div>
       </header>
       <div className={`flex items-center gap-1 border-b px-2 py-1 overflow-x-auto shrink-0 transition-colors [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${isMusicMode ? "bg-[#181818] border-[#282828]" : "bg-slate-50 border-slate-200"}`}>
-        {state.linkedViews.map((v: LinkedDbView) => (
-          <div 
-            key={v.id}
-            onClick={() => setActiveViewId(v.id)}
-            draggable
-            onDragStart={(e) => handleDragStart(e, v.id)}
-            onDragOver={(e) => handleDragOver(e, v.id)}
-            onDragEnd={handleDragEnd}
-            className={cn("px-3 min-h-[44px] py-1.5 text-base sm:text-sm font-medium rounded-t-md cursor-pointer whitespace-nowrap flex items-center gap-2 select-none transition-colors", activeViewId === v.id ? (isMusicMode ? "bg-[#282828] text-white" : "bg-white border border-b-0 border-slate-200 text-blue-600") : (isMusicMode ? "text-gray-400 hover:bg-white/10 hover:text-gray-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"), draggedViewId === v.id ? "opacity-50" : "")}
-          >
-            {activeViewId === v.id ? (
-              <div className="relative flex items-center min-w-[2rem]">
-                <span className="invisible whitespace-pre px-0.5">{v.name || 'ビュー名'}</span>
-                <input
-                  type="text"
-                  value={v.name}
-                  onChange={(e) => updateView(v.id, { name: e.target.value })}
-                  className={`absolute inset-0 w-full bg-transparent border-none p-0 focus:ring-0 font-medium outline-none text-base sm:text-sm ${isMusicMode ? "text-white" : "text-blue-600"}`}
-                  onClick={(e) => e.stopPropagation()}
-                  placeholder="ビュー名"
-                />
-              </div>
-            ) : (
-              <span>{v.name}</span>
-            )}
-            <button onClick={(e) => { e.stopPropagation(); deleteView(v.id); if (activeViewId === v.id) setActiveViewId(state.linkedViews[0]?.id || null); }} className="p-2 sm:p-0.5 -mr-1.5 sm:mr-0 hover:bg-red-100 text-slate-400 hover:text-red-500 rounded"><Trash2 className="w-4 h-4 sm:w-3 sm:h-3" /></button>
-          </div>
-        ))}
+        <Reorder.Group
+          as="div"
+          axis="x"
+          values={state.linkedViews}
+          onReorder={(newViews) => setState(s => ({ ...s, linkedViews: newViews }))}
+          className="flex items-center gap-1"
+        >
+          {state.linkedViews.map((v: LinkedDbView) => (
+            <Reorder.Item
+              as="div"
+              value={v}
+              key={v.id}
+              onClick={() => setActiveViewId(v.id)}
+              className={cn("px-3 min-h-[44px] py-1.5 text-base sm:text-sm font-medium rounded-t-md cursor-grab active:cursor-grabbing whitespace-nowrap flex items-center gap-2 select-none transition-colors", activeViewId === v.id ? (isMusicMode ? "bg-[#282828] text-white" : "bg-white border border-b-0 border-slate-200 text-blue-600") : (isMusicMode ? "text-gray-400 hover:bg-white/10 hover:text-gray-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"))}
+            >
+              {activeViewId === v.id ? (
+                <div className="relative flex items-center min-w-[2rem]">
+                  <span className="invisible whitespace-pre px-0.5">{v.name || 'ビュー名'}</span>
+                  <input
+                    type="text"
+                    value={v.name}
+                    onChange={(e) => updateView(v.id, { name: e.target.value })}
+                    className={`absolute inset-0 w-full bg-transparent border-none p-0 focus:ring-0 font-medium outline-none text-base sm:text-sm ${isMusicMode ? "text-white" : "text-blue-600"}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    placeholder="ビュー名"
+                  />
+                </div>
+              ) : (
+                <span>{v.name}</span>
+              )}
+              <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); deleteView(v.id); if (activeViewId === v.id) setActiveViewId(state.linkedViews[0]?.id || null); }} className="p-2 sm:p-0.5 -mr-1.5 sm:mr-0 hover:bg-red-100 text-slate-400 hover:text-red-500 rounded"><Trash2 className="w-4 h-4 sm:w-3 sm:h-3" /></button>
+            </Reorder.Item>
+          ))}
+        </Reorder.Group>
         <button onClick={() => setShowAddViewModal(true)} className={`whitespace-nowrap shrink-0 px-3 min-h-[44px] py-1.5 text-base sm:text-sm rounded-md flex items-center gap-1 transition-colors ${isMusicMode ? "text-gray-400 hover:bg-white/10" : "text-slate-500 hover:bg-slate-100"}`}>
           <Plus className="w-4 h-4" /> ビューを追加
         </button>
@@ -599,6 +576,20 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
     onUpdateView(view.id, { collapsedColumns: { ...collapsedColumns, [colKey]: !collapsedColumns[colKey] } });
   };
   const COLLAPSIBLE_COLUMNS = ['title', 'mainSingerId', 'subSingerIds', 'location', 'genre', 'usage', 'evaluation1', 'urls', 'name', 'mainSongs', 'subSongs', 'songViews', 'songViewsPerDay'];
+  
+  const isMinWrapCol = (colKey: string) => {
+    const targetColsForMinWrap = ['id', 'mainSingerId', 'location', 'genre', 'usage', 'evaluation1', 'releaseDate', 'viewCount', 'songViewsPerDay', 'top70Views', 'top70ViewsPerDay', 'singerPreference', 'trend', 'createdAt', 'updatedAt'];
+    return targetColsForMinWrap.includes(colKey) && (!COLLAPSIBLE_COLUMNS.includes(colKey) || !collapsedColumns[colKey]);
+  };
+
+  const getColWidth = (colKey: string) => {
+    if (view.columnWidths && view.columnWidths[colKey]) return view.columnWidths[colKey];
+    if (isMinWrapCol(colKey)) return undefined;
+    if (colKey === 'subSingerIds') return undefined;
+    if (colKey === 'title' || colKey === 'name') return 350;
+    return ['mainSingerId', 'search', 'preference', 'singability'].includes(colKey) ? undefined : 150;
+  };
+
   let ALL_COLUMNS = type === 'song' ? SONG_COLUMNS : SINGER_COLUMNS;
   if (!onNavigateToSearch) ALL_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'search');
   const visibleColumns = view.columns.filter((c: string) => !view.hiddenColumns.includes(c));
@@ -765,45 +756,45 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
   // Let's render the basic table.
   return (
     <div className="inline-block min-w-full align-middle pb-20">
-      <table className="min-w-full border-collapse text-sm table-fixed" style={{ width: 'max-content' }}>
-        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
-          <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-            {onDeleteItem && <th className="px-4 py-3 text-center border-r border-slate-200 w-12 sticky left-0 bg-slate-50 z-20">操作</th>}
+      <table className="min-w-full border-collapse text-sm" style={{ width: 'max-content' }}>
+        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-40">
+          <Reorder.Group 
+            as="tr" 
+            axis="x" 
+            values={visibleColumns} 
+            onReorder={(newCols) => onUpdateView(view.id, { columns: newCols })} 
+            className="text-[10px] uppercase tracking-wider text-slate-500 font-bold"
+          >
+            {onDeleteItem && <th className="px-4 py-3 text-center border-r border-slate-200 w-12 sticky left-0 bg-slate-50 z-[50]">🗑️</th>}
             {visibleColumns.map((colKey: string) => {
               const colDef = ALL_COLUMNS.find(c => c.key === colKey);
               if (!colDef) return null;
               return (
-                <motion.th layout transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      key={colKey} 
-      className={`px-4 py-3 text-left border-r border-slate-200 relative group bg-slate-50 ${draggedColumn === colKey ? 'opacity-50' : ''} ${(colKey === 'title' || colKey === 'name') ? 'sticky z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : ''}`}
-      style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, width: view.columnWidths[colKey] || (['title', 'mainSingerId', 'subSingerIds', 'search', 'preference', 'singability'].includes(colKey) ? 'max-content' : (colKey === 'title' ? 250 : 150)) }}
-      draggable
-      onDragStart={(e) => handleDragStart(e, colKey)}
-      onDragOver={handleDragOver}
-      onDrop={(e) => handleDrop(e, colKey)}
-      onDragEnd={() => setDraggedColumn(null)}
-  >
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab" />
-                    <span className="truncate">{colDef.label}</span>
+                <Reorder.Item 
+                  as="th"
+                  value={colKey}
+                  key={colKey} 
+                  className={`px-4 py-3 text-left border-r border-slate-200 relative group bg-slate-50 ${(colKey === 'title' || colKey === 'name') ? 'sticky z-[50] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'z-0'} ${isMinWrapCol(colKey) ? 'whitespace-nowrap' : ''}`}
+                  style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, width: getColWidth(colKey) }}
+                >
+                  <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing">
+                    <span className="truncate select-none">{colDef.label}</span>
                     {COLLAPSIBLE_COLUMNS.includes(colKey) && (
-                      <button onClick={() => toggleColumnCollapse(colKey)} className="text-gray-400 hover:text-gray-600 ml-auto">
+                      <button onPointerDown={(e) => e.stopPropagation()} onClick={() => toggleColumnCollapse(colKey)} className="text-gray-400 hover:text-gray-600 ml-auto cursor-pointer">
                         {collapsedColumns[colKey] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     )}
                   </div>
-                  {/* Resizer */}
-                  <div className="absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-blue-400 z-10" />
-                </motion.th>
+                </Reorder.Item>
               );
             })}
-          </tr>
+          </Reorder.Group>
         </thead>
         <tbody className="text-xs divide-y divide-slate-100">
           {sortedData.map((row: any) => (
             <tr key={row.id} className="hover:bg-slate-50 transition-colors group min-h-[44px] sm:min-h-0 cursor-pointer sm:cursor-default" onClick={(e) => { if (isMobile) { setMobileEditRow(row); } }}>
               {onDeleteItem && (
-                <td className="px-4 py-3 border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10">
+                <td className="px-4 py-3 border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-[30]">
                   <button onClick={(e) => { e.stopPropagation(); onDeleteItem(row.id); }} className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -866,7 +857,8 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                             }} 
                             allowCreate
                             multiple 
-                            placeholder="未設定" 
+                            placeholder="未設定"
+                            tagsPerRow={2}
                           />
                         )}
                         </> );
@@ -963,7 +955,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                  };
                  
                  return (
-                   <motion.td layout transition={{ type: 'spring', stiffness: 300, damping: 30 }} key={colKey} className={cn("px-4 py-3 border-r border-slate-100", colKey === 'title' ? 'sm:whitespace-normal sm:break-words whitespace-nowrap truncate' : (view.wrapText ? 'whitespace-normal' : 'whitespace-nowrap truncate'), (colKey === 'title' || colKey === 'name') ? 'sticky z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : '', isMobile && "pointer-events-none")} style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, maxWidth: view.columnWidths[colKey] || (['title', 'mainSingerId', 'subSingerIds', 'search', 'preference', 'singability'].includes(colKey) ? 'max-content' : (colKey === 'title' ? 250 : 150)), minWidth: view.columnWidths[colKey] || (['title', 'mainSingerId', 'subSingerIds', 'search', 'preference', 'singability'].includes(colKey) ? 'max-content' : (colKey === 'title' ? 250 : 150)) }}>
+                   <motion.td layout transition={{ type: 'spring', stiffness: 300, damping: 30 }} key={colKey} className={cn("px-4 py-3 border-r border-slate-100", isMinWrapCol(colKey) ? 'whitespace-nowrap' : (colKey === 'title' ? 'sm:whitespace-normal sm:break-words whitespace-nowrap truncate' : (view.wrapText ? 'whitespace-normal' : 'whitespace-nowrap truncate')), (colKey === 'title' || colKey === 'name') ? 'sticky z-[30] bg-white group-hover:bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'relative z-0', isMobile && "pointer-events-none")} style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, maxWidth: getColWidth(colKey), minWidth: getColWidth(colKey) }}>
                      {renderCellContent()}
                    </motion.td>
                  );

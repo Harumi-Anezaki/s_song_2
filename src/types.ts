@@ -11,6 +11,7 @@ export type Song = {
   urls: string[];
   urlTitles?: string[];
   urlViewCounts?: number[];
+  urlDurationSeconds?: number[];
   releaseDate: string; // YYYY-MM-DD
   viewCount: number;
   createdAt: string;
@@ -113,5 +114,10 @@ export type AppState = {
     linkedDbIsMusicMode?: boolean;
     linkedDbSearchQuery?: string;
     originalDbSearchQuery?: string;
+    musicPlayer?: {
+      currentIndex?: number;
+      isShuffle?: boolean;
+      isRepeat?: boolean;
+    };
   };
 };
