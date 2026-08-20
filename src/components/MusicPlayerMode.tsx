@@ -53,7 +53,7 @@ export function MusicPlayerMode({ songs, onClose }: MusicPlayerModeProps) {
   }, [currentIndex, isShuffle, isRepeat]);
 
   useEffect(() => {
-    if (currentIndex >= songs.length) {
+    if (songs.length > 0 && currentIndex >= songs.length) {
       setCurrentIndex(0);
     }
   }, [songs, currentIndex]);

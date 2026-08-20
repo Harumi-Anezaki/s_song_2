@@ -4,7 +4,7 @@ export type Song = {
   youtubeIds: string[];
   mainSingerId: string | null;
   subSingerIds: string[];
-  location: string;
+  location?: string;
   genre: string | string[];
   usage: string | string[];
   evaluation1: string;
@@ -16,9 +16,11 @@ export type Song = {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  lastSearchedAt?: string;
 };
 
 export type Singer = {
+  location?: string;
   id: string;
   name: string;
   preference: number | null;
@@ -102,6 +104,7 @@ export type AppState = {
     isSidebarOpen?: boolean;
     activeTab?: 'youtube' | 'linked' | 'original' | 'settings';
     originalDbActiveTab?: 'song' | 'singer';
+    originalDbCollapsedColumns?: Record<string, boolean>;
     originalDbSongView?: LinkedDbView;
     originalDbSingerView?: LinkedDbView;
     searchKeyword?: string;

@@ -3,9 +3,9 @@ export async function searchYoutube(keyword: string, minViews: number, apiKey: s
 
   let allSearchItems: any[] = [];
   let nextPageToken = '';
-  const maxTotalResults = 100;
+  const maxTotalResults = 200;
 
-  // 1. Fetch up to 100 search results using pagination
+  // 1. Fetch up to 200 search results using pagination
   while (allSearchItems.length < maxTotalResults) {
     const pageTokenParam = nextPageToken ? `&pageToken=${nextPageToken}` : '';
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(

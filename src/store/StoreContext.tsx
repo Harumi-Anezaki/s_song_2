@@ -48,6 +48,22 @@ const defaultState: AppState = {
 
 const StoreContext = createContext<StoreContextType | null>(null);
 
+const migrateLocations = (parsed: any) => {
+  if (parsed && parsed.songs && parsed.singers) {
+    let modified = false;
+    parsed.songs.forEach((song: any) => {
+      if (song.location) {
+        const singer = parsed.singers.find((s: any) => s.id === song.mainSingerId);
+        if (singer && !singer.location) {
+          singer.location = song.location;
+        }
+        delete song.location;
+        modified = true;
+      }
+    });
+  }
+};
+
 export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] = useState<AppState>(defaultState);
   const [user, setUser] = useState<User | null>(null);
@@ -59,6 +75,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        migrateLocations(parsed);
         setState({ 
           ...defaultState, 
           ...parsed,
@@ -79,6 +96,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
             const data = snapshot.val();
             if (data.appState) {
               const parsed = JSON.parse(data.appState);
+              migrateLocations(parsed);
               setState(prevState => ({
                 ...prevState,
                 ...parsed,
@@ -101,8 +119,9 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       if (user) {
         setSyncStatus('syncing');
         const timer = setTimeout(() => {
+          const { uiState, ...stateToSync } = state;
           set(ref(rtdb, `users/${user.uid}`), {
-            appState: JSON.stringify(state),
+            appState: JSON.stringify(stateToSync),
             updatedAt: new Date().toISOString()
           })
             .then(() => setSyncStatus('success'))
@@ -238,6 +257,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
   const importData = (dataStr: string) => {
     try {
       const data = JSON.parse(dataStr);
+      migrateLocations(data);
       setState({ 
         ...defaultState, 
         ...data,
@@ -284,7 +304,8 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const exportData = () => {
-    return JSON.stringify(state, null, 2);
+    const { uiState, ...stateToExport } = state;
+    return JSON.stringify(stateToExport, null, 2);
   };
 
   const getComputedSingers = () => {
@@ -302,14 +323,14 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       const sortedViews = [...songViews].sort((a, b) => b - a);
       let top70Views = null;
       if (sortedViews.length > 5) {
-        const idx = Math.floor(sortedViews.length * 0.7);
+        const idx = Math.floor(sortedViews.length * 0.6);
         if (idx > 0) top70Views = sortedViews[idx - 1];
       }
 
       const sortedViewsPerDay = [...songViewsPerDay].sort((a, b) => b - a);
       let top70ViewsPerDay = null;
       if (sortedViewsPerDay.length > 5) {
-        const idx = Math.floor(sortedViewsPerDay.length * 0.7);
+        const idx = Math.floor(sortedViewsPerDay.length * 0.6);
         if (idx > 0) top70ViewsPerDay = sortedViewsPerDay[idx - 1];
       }
 
@@ -351,6 +372,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
         _top70ViewsPerDay: top70ViewsPerDay,
         _singerPreference: singerPreference,
         _mainSingerName: mainSinger?.name ?? '',
+        _location: mainSinger?.location ?? '',
         _trend: trend,
       };
     });

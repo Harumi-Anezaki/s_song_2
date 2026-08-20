@@ -16,7 +16,7 @@ export const SONG_COLUMNS = [
   { key: 'id', label: 'ID', type: 'text' },
   { key: 'mainSingerId', label: 'メイン歌手', type: 'single_select' },
   { key: 'subSingerIds', label: 'サブ歌手', type: 'multi_select' },
-  { key: 'location', label: '場所', type: 'text' },
+  { key: 'location', label: '言語', type: 'text' },
   { key: 'genre', label: 'ジャンル', type: 'multi_select' },
   { key: 'usage', label: '用途', type: 'multi_select' },
   { key: 'evaluation1', label: '評価1', type: 'single_select' },
@@ -24,8 +24,8 @@ export const SONG_COLUMNS = [
   { key: 'releaseDate', label: 'リリース日', type: 'date' },
   { key: 'viewCount', label: '再生数', type: 'number' },
   { key: 'songViewsPerDay', label: '回/日', type: 'number' },
-  { key: 'top70Views', label: '再生数上位70%', type: 'number' },
-  { key: 'top70ViewsPerDay', label: '回/日上位70%', type: 'number' },
+  { key: 'top70Views', label: '再生数上位60%', type: 'number' },
+  { key: 'top70ViewsPerDay', label: '回/日上位60%', type: 'number' },
   { key: 'singerPreference', label: '歌手の好き度', type: 'number' },
   { key: 'trend', label: '流行関数', type: 'number' },
   { key: 'createdAt', label: '作成日時', type: 'date' },
@@ -34,15 +34,17 @@ export const SONG_COLUMNS = [
 
 export const SINGER_COLUMNS = [
   { key: 'search', label: '検索', type: 'custom' },
+  { key: 'lastSearchedAt', label: '最終検索', type: 'text', className: 'px-4 py-3 whitespace-nowrap text-center' },
   { key: 'name', label: '歌手名', type: 'text' },
+  { key: 'location', label: '言語', type: 'select' },
   { key: 'preference', label: '好き度', type: 'number' },
   { key: 'singability', label: '歌いやすさ', type: 'number' },
   { key: 'mainSongs', label: 'メイン曲', type: 'multi_select' },
   { key: 'subSongs', label: 'サブ曲', type: 'multi_select' },
   { key: 'songViews', label: '曲の再生数', type: 'text' },
   { key: 'songViewsPerDay', label: '曲の回/日', type: 'text' },
-  { key: 'top70Views', label: '再生数_上位70%', type: 'number' },
-  { key: 'top70ViewsPerDay', label: '回/日_上位70%', type: 'number' },
+  { key: 'top70Views', label: '再生数_上位60%', type: 'number' },
+  { key: 'top70ViewsPerDay', label: '回/日_上位60%', type: 'number' },
   { key: 'createdAt', label: '作成日時', type: 'date' },
   { key: 'updatedAt', label: '更新日時', type: 'date' },
 ];
@@ -115,7 +117,7 @@ function DebouncedFilterInput({ initialValue, onChange }: { initialValue: string
 
 export function ViewOptions({ view, onUpdateView, type, optionsMap }: { view: any, onUpdateView: any, type: string, optionsMap: any }) {
   const [activeMenu, setActiveMenu] = React.useState<'sort' | 'filter' | 'properties' | null>(null);
-  const ALL_COLUMNS = (type === 'song' ? SONG_COLUMNS : SINGER_COLUMNS).filter(c => c.key !== 'search');
+  const ALL_COLUMNS = (type === 'song' ? SONG_COLUMNS : SINGER_COLUMNS).filter(c => c.key !== 'search' && c.key !== 'lastSearchedAt');
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -165,7 +167,7 @@ export function ViewOptions({ view, onUpdateView, type, optionsMap }: { view: an
         <Settings2 className="w-4 h-4" /> 表示設定
       </button>
     </div>
-    <div className={`relative z-50 ${mobileMenuOpen ? 'fixed inset-0 bg-white z-[60] p-4 flex flex-col gap-4 overflow-auto items-start' : 'hidden sm:flex items-center gap-1'}`} ref={ref}>
+    <div className={`relative z-[99] ${mobileMenuOpen ? 'fixed inset-0 bg-white z-[210] p-4 flex flex-col gap-4 overflow-auto items-start' : 'hidden sm:flex items-center gap-1'}`} ref={ref}>
       {mobileMenuOpen && (
         <div className="flex justify-between items-center border-b pb-2 w-full">
           <h2 className="font-bold text-lg">表示設定</h2>
@@ -179,7 +181,7 @@ export function ViewOptions({ view, onUpdateView, type, optionsMap }: { view: an
         <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
       )}
       {activeMenu === 'sort' && (
-        <div className="sm:absolute sm:top-full sm:right-0 mt-4 sm:mt-1 w-full sm:w-[550px] bg-white sm:border sm:border-slate-200 sm:shadow-lg rounded-md p-2 sm:p-3 z-50 sm:max-h-[80vh] overflow-y-auto">
+        <div className="sm:absolute sm:top-full sm:right-0 mt-4 sm:mt-1 w-full sm:w-[550px] bg-white sm:border sm:border-slate-200 sm:shadow-lg rounded-md p-2 sm:p-3 z-[99] sm:max-h-[80vh] overflow-y-auto">
           <div className="text-xs font-bold text-slate-500 mb-2">並べ替え条件</div>
           <div className="space-y-2 mb-3">
             {(view.sorts || []).map((sort: any) => (
@@ -215,7 +217,7 @@ export function ViewOptions({ view, onUpdateView, type, optionsMap }: { view: an
         <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
       )}
       {activeMenu === 'filter' && (
-        <div className="sm:absolute sm:top-full sm:right-0 mt-4 sm:mt-1 w-full sm:min-w-[550px] sm:w-max max-w-[800px] bg-white sm:border sm:border-slate-200 sm:shadow-lg rounded-md p-2 sm:p-3 z-50 sm:max-h-[80vh] overflow-y-auto">
+        <div className="sm:absolute sm:top-full sm:right-0 mt-4 sm:mt-1 w-full sm:min-w-[550px] sm:w-max max-w-[800px] bg-white sm:border sm:border-slate-200 sm:shadow-lg rounded-md p-2 sm:p-3 z-[99] sm:max-h-[80vh] overflow-y-auto">
           <div className="text-xs font-bold text-slate-500 mb-2">フィルター条件</div>
           <div className="space-y-2 mb-3">
             {(view.filters || []).map((filter: any, idx: number) => (
@@ -326,7 +328,10 @@ export default function LinkedDb() {
   const genreOptions = (state.customGenres || []).map(g => ({ label: g, value: g }));
   const usageOptions = (state.customUsages || []).map(u => ({ label: u, value: u }));
   const singerOptions = state.singers.map(s => ({ label: s.name, value: s.id }));
-  const locationOptions = Array.from(new Set(state.songs.map(s => s.location).filter(Boolean))).map(l => ({ label: l, value: l }));
+  const locationOptions = Array.from(new Set([
+    ...state.songs.map(s => s.location),
+    ...state.singers.map(s => s.location)
+  ].filter(Boolean))).map(l => ({ label: l as string, value: l as string }));
   const evaluationOptions = (state.customEvaluations || []).map(e => ({ label: e, value: e }));
 
   const handleDeleteGenre = (val: string) => {
@@ -460,7 +465,7 @@ export default function LinkedDb() {
       </div>
 
       {showAddViewModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
            <div className="bg-white rounded-xl p-6 w-full max-w-[440px] shadow-2xl border border-slate-100 mx-4">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
@@ -587,14 +592,16 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
     if (isMinWrapCol(colKey)) return undefined;
     if (colKey === 'subSingerIds') return undefined;
     if (colKey === 'title' || colKey === 'name') return 350;
+    if (colKey === 'lastSearchedAt') return 92;
     return ['mainSingerId', 'search', 'preference', 'singability'].includes(colKey) ? undefined : 150;
   };
 
   let ALL_COLUMNS = type === 'song' ? SONG_COLUMNS : SINGER_COLUMNS;
-  if (!onNavigateToSearch) ALL_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'search');
+  if (!onNavigateToSearch) ALL_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'search' && c.key !== 'lastSearchedAt');
   const visibleColumns = view.columns.filter((c: string) => !view.hiddenColumns.includes(c));
 
   const getCellValue = (row: any, colKey: string) => {
+    if (colKey === 'location' && type === 'song') return row._location;
     if (colKey === 'songViewsPerDay') return row._viewsPerDay;
     if (colKey === 'trend') return row._trend;
     if (colKey === 'songViews') return row._songViews;
@@ -757,7 +764,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
   return (
     <div className="inline-block min-w-full align-middle pb-20">
       <table className="min-w-full border-collapse text-sm" style={{ width: 'max-content' }}>
-        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-40">
+        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-[80]">
           <Reorder.Group 
             as="tr" 
             axis="x" 
@@ -765,7 +772,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
             onReorder={(newCols) => onUpdateView(view.id, { columns: newCols })} 
             className="text-[10px] uppercase tracking-wider text-slate-500 font-bold"
           >
-            {onDeleteItem && <th className="px-4 py-3 text-center border-r border-slate-200 w-12 sticky left-0 bg-slate-50 z-[50]">🗑️</th>}
+            {onDeleteItem && <th className="px-4 py-3 text-center border-r border-slate-200 w-12 sticky left-0 bg-slate-50 !z-[60]">🗑️</th>}
             {visibleColumns.map((colKey: string) => {
               const colDef = ALL_COLUMNS.find(c => c.key === colKey);
               if (!colDef) return null;
@@ -774,7 +781,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                   as="th"
                   value={colKey}
                   key={colKey} 
-                  className={`px-4 py-3 text-left border-r border-slate-200 relative group bg-slate-50 ${(colKey === 'title' || colKey === 'name') ? 'sticky z-[50] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'z-0'} ${isMinWrapCol(colKey) ? 'whitespace-nowrap' : ''}`}
+                  className={`px-4 py-3 text-left border-r border-slate-200 relative group bg-slate-50 ${(colKey === 'title' || colKey === 'name') ? 'sticky !z-[50] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'z-0'} ${isMinWrapCol(colKey) ? 'whitespace-nowrap' : ''}`}
                   style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, width: getColWidth(colKey) }}
                 >
                   <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing">
@@ -792,16 +799,19 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
         </thead>
         <tbody className="text-xs divide-y divide-slate-100">
           {sortedData.map((row: any) => (
-            <tr key={row.id} className="hover:bg-slate-50 transition-colors group min-h-[44px] sm:min-h-0 cursor-pointer sm:cursor-default" onClick={(e) => { if (isMobile) { setMobileEditRow(row); } }}>
+            <tr key={row.id} className="hover:bg-slate-50 transition-colors group/row min-h-[44px] sm:min-h-0 cursor-pointer sm:cursor-default" onClick={(e) => { if (isMobile) { setMobileEditRow(row); } }}>
               {onDeleteItem && (
-                <td className="px-4 py-3 border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-[30]">
-                  <button onClick={(e) => { e.stopPropagation(); onDeleteItem(row.id); }} className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                <td className="px-4 py-3 border-r border-slate-100 text-center sticky left-0 bg-white group-hover/row:bg-slate-50 !z-[50]">
+                  <button onClick={(e) => { e.stopPropagation(); onDeleteItem(row.id); }} className="text-slate-400 hover:text-red-600 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity focus:opacity-100">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </td>
               )}
               {visibleColumns.map((colKey: string) => {
+                 const colDef = ALL_COLUMNS.find(c => c.key === colKey);
+                 if (!colDef) return null;
                  let val = row[colKey];
+                 if (colKey === 'location' && type === 'song') val = row._location;
                  if (colKey === 'songViewsPerDay') val = row._viewsPerDay;
                  if (colKey === 'trend') val = row._trend;
                  if (colKey === 'songViews') val = row._songViews?.slice(0,3).join(', ');
@@ -864,7 +874,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                         </> );
                       }
                       if (colKey === 'location') {
-                        return ( <>{collapsedColumns[colKey] ? truncateText(val) : (<NotionSelect value={val || ''} options={locationOptions} onChange={(newVal) => onUpdateItem(row.id, { location: newVal })} placeholder="未設定" />)}
+                        return ( <>{collapsedColumns[colKey] ? truncateText(val) : (<div className="px-2 py-1 bg-slate-50 text-slate-600 rounded text-xs truncate max-w-full">{val || '-'}</div>)}
                         </> );
                       }
                       if (colKey === 'evaluation1') {
@@ -898,6 +908,18 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                         )}</> );
                       }
                     } else if (type === 'singer') {
+                      if (colKey === 'location') {
+                        return ( <>{collapsedColumns[colKey] ? val : (<NotionSelect value={val || ''} options={locationOptions} onChange={(newVal) => onUpdateItem(row.id, { location: newVal })} allowCreate placeholder="未設定" />)}
+                        </> );
+                      }
+                      if (colKey === 'lastSearchedAt') {
+                        if (!val) return <span className="text-gray-400 text-xs font-mono">-</span>;
+                        const d = new Date(val);
+                        if (isNaN(d.getTime())) return <span className="text-gray-400 text-xs font-mono">-</span>;
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        return <span className="text-gray-700 text-sm font-mono">{mm}/{dd}</span>;
+                      }
                       if (colKey === 'name') {
                         return (
                           <AutoResizeTextarea value={val || ''} onChange={(e) => onUpdateItem(row.id, { [colKey]: e.target.value })} className="bg-transparent border-none focus:ring-2 focus:ring-blue-500 rounded px-1 w-full block" />
@@ -955,7 +977,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                  };
                  
                  return (
-                   <motion.td layout transition={{ type: 'spring', stiffness: 300, damping: 30 }} key={colKey} className={cn("px-4 py-3 border-r border-slate-100", isMinWrapCol(colKey) ? 'whitespace-nowrap' : (colKey === 'title' ? 'sm:whitespace-normal sm:break-words whitespace-nowrap truncate' : (view.wrapText ? 'whitespace-normal' : 'whitespace-nowrap truncate')), (colKey === 'title' || colKey === 'name') ? 'sticky z-[30] bg-white group-hover:bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'relative z-0', isMobile && "pointer-events-none")} style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, maxWidth: getColWidth(colKey), minWidth: getColWidth(colKey) }}>
+                   <motion.td layout transition={{ type: 'spring', stiffness: 300, damping: 30 }} key={colKey} className={cn("px-4 py-3 border-r border-slate-100", isMinWrapCol(colKey) ? 'whitespace-nowrap' : (colKey === 'title' ? 'sm:whitespace-normal sm:break-words whitespace-nowrap truncate' : (view.wrapText ? 'whitespace-normal' : 'whitespace-nowrap truncate')), (colKey === 'title' || colKey === 'name') ? 'sticky !z-[40] bg-white group-hover/row:bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : 'relative z-0', isMobile && "pointer-events-none")} style={{ left: (colKey === 'title' || colKey === 'name') ? (onDeleteItem ? '48px' : '0px') : undefined, maxWidth: getColWidth(colKey), minWidth: getColWidth(colKey) }}>
                      {renderCellContent()}
                    </motion.td>
                  );
@@ -976,6 +998,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
             {ALL_COLUMNS.filter(c => visibleColumns.includes(c.key) || c.key === 'title' || c.key === 'name').map(colDef => {
               const colKey = colDef.key;
               let val = mobileEditRow[colKey];
+              if (colKey === 'location' && type === 'song') val = mobileEditRow._location;
               if (colKey === 'songViewsPerDay') val = mobileEditRow._viewsPerDay;
               if (colKey === 'trend') val = mobileEditRow._trend;
               if (colKey === 'songViews') val = mobileEditRow._songViews?.slice(0,3).join(', ');
@@ -996,15 +1019,26 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                 } else if (colKey === 'subSingerIds') {
                   cellContent = <NotionSelect value={val || []} options={singerOptions} onChange={(newVal) => { const newIds = ensureSingers(newVal); onUpdateItem(mobileEditRow.id, { subSingerIds: newIds }); setMobileEditRow({...mobileEditRow, subSingerIds: newIds}); }} allowCreate multiple placeholder="サブ歌手を追加..." />;
                 } else if (colKey === 'location') {
-                  cellContent = <NotionSelect value={val || ''} options={locationOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { location: newVal }); setMobileEditRow({...mobileEditRow, location: newVal}); }} allowCreate placeholder="場所..." />;
+                  cellContent = <div className="text-slate-700 bg-slate-50 p-3 rounded">{String(val || '-')}</div>;
                 } else if (colKey === 'evaluation1') {
                   cellContent = <NotionSelect value={val || ''} options={evaluationOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { evaluation1: newVal }); setMobileEditRow({...mobileEditRow, evaluation1: newVal}); }} onDeleteOption={onDeleteEvaluation} allowCreate placeholder="評価..." />;
                 } else {
                   cellContent = <div className="text-slate-700 bg-slate-50 p-3 rounded">{String(val || '-')}</div>;
                 }
               } else if (type === 'singer') {
-                if (colKey === 'name') {
+                if (colKey === 'lastSearchedAt') {
+                  let formatted = '-';
+                  if (val) {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                      formatted = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+                    }
+                  }
+                  cellContent = <div className="text-slate-700 bg-slate-50 p-3 rounded font-mono">{formatted}</div>;
+                } else if (colKey === 'name') {
                   cellContent = <AutoResizeTextarea value={val || ''} onChange={(e) => { onUpdateItem(mobileEditRow.id, { [colKey]: e.target.value }); setMobileEditRow({...mobileEditRow, [colKey]: e.target.value}); }} className="border border-slate-300 focus:border-blue-500 rounded p-3 w-full bg-white text-base" />;
+                } else if (colKey === 'location') {
+                  cellContent = <NotionSelect value={val || ''} options={locationOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { location: newVal }); setMobileEditRow({...mobileEditRow, location: newVal}); }} allowCreate placeholder="言語..." />;
                 } else if (colKey === 'preference' || colKey === 'singability') {
                   cellContent = <input type="number" min="1" max="5" value={val || ''} onChange={(e) => { const n = parseInt(e.target.value) || null; onUpdateItem(mobileEditRow.id, { [colKey]: n }); setMobileEditRow({...mobileEditRow, [colKey]: n}); }} className="border border-slate-300 rounded p-3 w-full bg-white text-base" />;
                 } else {
@@ -1139,7 +1173,7 @@ function PropertiesMenu({ view, onUpdateView, ALL_COLUMNS, onClose }: any) {
   };
 
   return (
-    <div className="absolute top-full right-0 mt-1 w-[320px] bg-white border border-slate-200 shadow-xl rounded-xl z-50 flex flex-col max-h-[500px]">
+    <div className="absolute top-full right-0 mt-1 w-[320px] bg-white border border-slate-200 shadow-xl rounded-xl z-[99] flex flex-col max-h-[500px]">
       <div className="flex flex-col border-b border-slate-100 p-2">
         <div className="flex items-center justify-between px-2 py-1 mb-2">
           <div className="flex items-center gap-2 text-slate-600 font-medium text-sm">

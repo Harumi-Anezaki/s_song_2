@@ -41,7 +41,14 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     };
     let newView = { sourceDb: 'singer', ...view };
     const missing = defaultSingerColumns.filter(c => !newView.columns.includes(c));
-    newView.columns = ['search', ...newView.columns.filter(c => c !== 'search'), ...missing.filter(c => c !== 'search')].filter(c => defaultSingerColumns.includes(c));
+    
+    let cols = newView.columns.filter(c => c !== 'search' && c !== 'lastSearchedAt');
+    if (newView.columns.includes('lastSearchedAt')) {
+      // If they already had it, we still force it next to search for consistency, or keep it where they dragged it?
+      // "検索カラムの横に" could mean default placement. Let's just place 'lastSearchedAt' immediately after 'search'.
+      // If we do this, it will always be locked next to search. The prompt didn't say to lock it, but the search column is already locked.
+    }
+    newView.columns = ['search', 'lastSearchedAt', ...cols, ...missing.filter(c => c !== 'search' && c !== 'lastSearchedAt')].filter(c => defaultSingerColumns.includes(c));
     newView.filters = (newView.filters || []).filter(f => defaultSingerColumns.includes(f.column) && f.column !== 'search');
     newView.sorts = (newView.sorts || []).filter(s => defaultSingerColumns.includes(s.column) && s.column !== 'search');
     return newView;
@@ -83,7 +90,6 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
       youtubeIds: [],
       mainSingerId: null,
       subSingerIds: [],
-      location: '',
       genre: [],
       usage: [],
       evaluation1: '',
@@ -100,6 +106,7 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     const newSinger: Singer = {
       id: generateId(),
       name: '新規歌手',
+      location: '',
       preference: null,
       singability: null,
       createdAt: new Date().toISOString(),
@@ -108,8 +115,8 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     setState(s => ({ ...s, singers: [newSinger, ...s.singers] }));
   };
 
-  const computedSongs = useMemo(() => getComputedSongs(), [state.songs, state.singers]);
-  const computedSingers = useMemo(() => getComputedSingers(), [state.songs, state.singers]);
+  const computedSongs = getComputedSongs();
+  const computedSingers = getComputedSingers();
 
   const filteredSongs = useMemo(() => {
     if (!searchQuery.trim()) return computedSongs;
@@ -123,7 +130,10 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     return computedSingers.filter(s => s.name.toLowerCase().includes(lowerQ));
   }, [computedSingers, searchQuery]);
 
-  const allLocations = Array.from(new Set(state.songs.map(s => s.location).filter(Boolean)));
+  const allLocations = Array.from(new Set([
+    ...state.singers.map(s => s.location),
+    ...state.songs.map(s => s.location)
+  ].filter(Boolean)));
 
   const genreOptions = (state.customGenres || []).map(g => ({ label: g, value: g }));
   const usageOptions = (state.customUsages || []).map(u => ({ label: u, value: u }));
@@ -270,7 +280,7 @@ const SONG_DEF = [
   { id: 'id', label: 'ID', className: 'px-4 py-3 whitespace-nowrap w-24' },
   { id: 'mainSingerId', label: 'メイン歌手', collapsible: true, className: 'px-4 py-3 whitespace-nowrap min-w-[150px]' },
   { id: 'subSingerIds', label: 'サブ歌手', collapsible: true, className: 'px-4 py-3 whitespace-nowrap min-w-[200px]' },
-  { id: 'location', label: '場所', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-24' },
+  { id: 'location', label: '言語', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-24' },
   { id: 'genre', label: 'ジャンル', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-32' },
   { id: 'usage', label: '用途', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-32' },
   { id: 'evaluation1', label: '評価1', collapsible: true, className: 'px-4 py-3 whitespace-nowrap w-32' },
@@ -278,8 +288,8 @@ const SONG_DEF = [
   { id: 'releaseDate', label: 'リリース日', className: 'px-4 py-3 whitespace-nowrap w-32' },
   { id: 'viewCount', label: '再生数', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
   { id: '_viewsPerDay', label: '回/日', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
-  { id: '_top70Views', label: '同アーティストの再生数の上位70%', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
-  { id: '_top70ViewsPerDay', label: '同アーティストの回/日の上位70%', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
+  { id: '_top70Views', label: '同アーティストの再生数の上位60%', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
+  { id: '_top70ViewsPerDay', label: '同アーティストの回/日の上位60%', className: 'px-4 py-3 whitespace-nowrap text-right w-32' },
   { id: '_singerPreference', label: '歌手の好き度', className: 'px-4 py-3 whitespace-nowrap text-right w-24' },
   { id: '_trend', label: '流行関数', className: 'px-4 py-3 whitespace-nowrap w-32' },
   { id: 'alarm', label: 'ALARM', className: 'px-4 py-3 whitespace-nowrap w-32' },

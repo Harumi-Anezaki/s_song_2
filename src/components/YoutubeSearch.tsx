@@ -9,11 +9,15 @@ import { cn } from '../lib/utils';
 import { NotionSelect } from './ui/NotionSelect';
 
 export default function YoutubeSearch({ initialKeyword }: { initialKeyword: string }) {
-  const { state, setState, addMergedSongs, addExcludedYoutubeIds, removeExcludedYoutubeId, getComputedSongs, updateSong, deleteSong, updateUiState, ensureSinger, ensureSingers } = useStore();
+  const { state, setState, addMergedSongs, addExcludedYoutubeIds, removeExcludedYoutubeId, getComputedSongs, updateSong, deleteSong, updateSinger, updateUiState, ensureSinger, ensureSingers } = useStore();
   const keyword = state.uiState?.searchKeyword || initialKeyword || '';
   const setKeyword = (val: string) => updateUiState({ searchKeyword: val });
   
   const singerOptions = state.singers.map(s => ({ label: s.name, value: s.id }));
+  const locationOptions = Array.from(new Set([
+    ...state.singers.map(s => s.location),
+    ...state.songs.map(s => s.location)
+  ].filter(Boolean)));
   
   const minViews = state.uiState?.youtubeSearchMinViews || 0;
   const setMinViews = (val: number) => updateUiState({ youtubeSearchMinViews: val });
@@ -58,6 +62,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
 
     // Register singer if not exists
     const existingSinger = state.singers.find((s) => s.name === keyword);
+    const nowIso = new Date().toISOString();
     if (!existingSinger) {
       setState((s) => ({
         ...s,
@@ -68,11 +73,14 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
             name: keyword,
             preference: null,
             singability: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            lastSearchedAt: nowIso,
           },
         ],
       }));
+    } else {
+      updateSinger(existingSinger.id, { lastSearchedAt: nowIso });
     }
 
     try {
@@ -519,15 +527,16 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
             </select>
           </div>
           <div className="w-full sm:col-span-2">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">場所</label>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">言語</label>
             <select
               value={searchLocation}
               onChange={(e) => setSearchLocation(e.target.value)}
               className="w-full border border-slate-300 rounded px-3 py-3 sm:py-2 min-h-[44px] bg-slate-50 outline-none text-base sm:text-sm"
             >
               <option value="">未設定</option>
-              <option value="日本">日本</option>
-              <option value="海外">海外</option>
+              {locationOptions.map(l => (
+                <option key={l} value={l}>{l}</option>
+              ))}
             </select>
           </div>
           <div className="w-full sm:col-span-3">
