@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Search, Database, HardDrive, Settings as SettingsIcon, ChevronLeft, Menu } from 'lucide-react';
 import { cn } from '../lib/utils';
-import YoutubeSearch from './YoutubeSearch';
-import LinkedDb from './LinkedDb';
-import OriginalDb from './OriginalDb';
+import YoutubeSearch from '../features/youtube-search';
+import LinkedDb from '../features/linked-db';
+import OriginalDb from '../features/original-db';
 import Settings from './Settings';
 import { useStore } from '../store/StoreContext';
 
