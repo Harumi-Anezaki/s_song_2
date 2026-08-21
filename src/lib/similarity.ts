@@ -1,4 +1,5 @@
 import { YoutubeSearchResult, SimilarityResult } from '../types';
+import { COMMON_WORDS, VERSION_WORDS, CHANNEL_SUFFIXES, LIVE_PERFORMANCE_WORDS, SHORT_TV_SIZE_WORDS, COVER_REMIX_WORDS } from './similarity-words';
 
 function getBigrams(str: string): Set<string> {
   const bigrams = new Set<string>();
@@ -59,18 +60,6 @@ function calculateStringSimilarity(s1: string, s2: string): { score: number, ove
   };
 }
 
-const COMMON_WORDS = [
-  'official', 'music video', 'mv', 'pv', 'lyrics', '歌詞付き', 'full', 'hd', '4k', 'audio',
-  'lyric video', 'tvアニメ', 'アニメ', 'ノンクレジット', 'op', 'ed', 'オープニング', 'エンディング',
-  '主題歌', 'covered by', '歌ってみた', '切り抜き', 'スペシャル', 'ちゃんねる', 'チャンネル',
-  'mad', 'amv', '公式', 'original', 'teaser', 'trailer'
-];
-
-const VERSION_WORDS = [
-  'live', 'cover', '歌ってみた', 'remix', 'acoustic', 'instrumental', 'karaoke', 'カラオケ',
-  'sped up', 'nightcore', 'short ver', 'short ver.', 'short', 'the first take', 'performance', '紅白', '切り抜き'
-];
-
 export function normalizeTitle(title: string, keyword: string, channelName: string = ''): string {
   return removeNoiseWords(title, channelName, keyword);
 }
@@ -86,31 +75,30 @@ function removeNoiseWords(text: string, channelName: string = '', keyword: strin
   }
   
   if (channelName) {
-    const cleanChannel = channelName.toLowerCase().replace(/[()[\]{}<>'"`\-=_+*&^%$#@!~\\|/?,.;:【】『』「」]/g, ' ');
+    let cleanChannel = channelName.toLowerCase().replace(/[()[\]{}<>'"`\-=_+*&^%$#@!~\\|/?,.;:【】『』「」–—]/g, ' ');
+    cleanChannel = cleanChannel.replace(/(vevo|official|channel|music|japan|inc|ltd|co|entertainment|records|topic|tv|studio|project)/ig, ' ').trim();
     cleanChannel.split(/\s+/).forEach(part => {
       if (part.length > 2) {
-        t = t.replace(new RegExp(part, 'g'), ' ');
+        t = t.replace(new RegExp(part, 'gi'), ' ');
       }
     });
   }
 
-  COMMON_WORDS.forEach((w) => {
+  const noiseWords = [...COMMON_WORDS, ...VERSION_WORDS].sort((a, b) => b.length - a.length);
+  noiseWords.forEach((w) => {
     t = t.replace(new RegExp(`\\b${w}\\b`, 'gi'), ' ');
-    t = t.replace(new RegExp(w, 'gi'), ' '); 
+    if (!/^[a-z0-9]+$/i.test(w)) {
+      t = t.replace(new RegExp(w, 'gi'), ' '); 
+    }
   });
   
-  VERSION_WORDS.forEach((w) => {
-    t = t.replace(new RegExp(`\\b${w}\\b`, 'gi'), ' ');
-    t = t.replace(new RegExp(w, 'gi'), ' '); 
-  });
-  
-  t = t.replace(/[()[\]{}<>'"`\-=_+*&^%$#@!~\\|/?,.;:【】『』「」]/g, ' ');
+  t = t.replace(/[()[\]{}<>'"`\-=_+*&^%$#@!~\\|/?,.;:【】『』「」–—]/g, ' ');
 
   return t.replace(/\s+/g, ' ').trim();
 }
 
 function extractBracketContents(str: string): string[] {
-  const matches = str.match(/([「『【"“\'‘])([^」』】"”\'’]+)([」』】"”\'’])/g) || [];
+  const matches = str.match(/([「『"“'‘])([^」』"”'’]+)([」』"”'’])/g) || [];
   return matches.map(m => m.slice(1, -1).trim()).filter(m => m.length > 0);
 }
 
@@ -119,20 +107,34 @@ function extractExplicitTitles(title: string): string[] {
   return matches.map(m => m.slice(1, -1).trim()).filter(m => m.length >= 2);
 }
 
+function removeChannelName(title: string, channelName: string): string {
+    if (!channelName) return title;
+    let cleanChannel = channelName.toLowerCase().replace(/[()[\]{}<>'"`\-=_+*&^%$#@!~\\|/?,.;:【】『』「」–—]/g, ' ');
+    cleanChannel = cleanChannel.replace(new RegExp(`(${CHANNEL_SUFFIXES.join('|')})`, 'ig'), ' ').trim();
+    
+    let t = title;
+    cleanChannel.split(/\s+/).forEach(part => {
+        if (part.length > 2) {
+            t = t.replace(new RegExp(part, 'ig'), ' ');
+        }
+    });
+    return t;
+}
+
 function extractSignificantParts(title: string): string[] {
   const brackets = extractBracketContents(title);
-  const parts = title.split(/[|\-/~〜]/).map(p => p.trim());
+  const parts = title.split(/[|/~〜–—]|\s+-\s+/).map(p => p.trim());
   return [...brackets, ...parts].filter(p => p.length >= 2);
 }
 
 function hasLiveOrPerformance(title: string): boolean {
   const t = title.toLowerCase();
-  return t.includes('live') || t.includes('performance') || t.includes('紅白') || t.includes('ライブ');
+  return LIVE_PERFORMANCE_WORDS.some(w => t.includes(w));
 }
 
 function hasShortOrTvSize(title: string): boolean {
   const t = title.toLowerCase();
-  return t.includes('short') || t.includes('tv') || t.includes('アニメ');
+  return SHORT_TV_SIZE_WORDS.some(w => t.includes(w));
 }
 
 function extractVersions(title: string): string[] {
@@ -149,8 +151,8 @@ export function calculateSimilarity(
   const reasons: string[] = [];
   const warnings: string[] = [];
 
-  const clean1 = removeNoiseWords(vid1.title, vid1.channel, keyword);
-  const clean2 = removeNoiseWords(vid2.title, vid2.channel, keyword);
+  const clean1 = removeNoiseWords(removeNoiseWords(vid1.title, vid1.channel, keyword), vid2.channel, '');
+  const clean2 = removeNoiseWords(removeNoiseWords(vid2.title, vid2.channel, keyword), vid1.channel, '');
 
   const brackets1 = extractBracketContents(vid1.title);
   const brackets2 = extractBracketContents(vid2.title);
@@ -159,20 +161,33 @@ export function calculateSimilarity(
   let isBracketMatched = false;
   let bracketMatchMethod = '';
 
+  const cleanTitle1NoChannel = removeChannelName(vid1.title, vid1.channel);
+  const cleanTitle2NoChannel = removeChannelName(vid2.title, vid2.channel);
   const explicitTitles1 = extractExplicitTitles(vid1.title);
   const explicitTitles2 = extractExplicitTitles(vid2.title);
   
   let isExplicitSongTitleMatched = false;
   
+  const isTitleIncluded = (part: string, fullTitle: string) => {
+      const p = part.toLowerCase();
+      const f = fullTitle.toLowerCase();
+      if (!f.includes(p)) return false;
+      if (/^[a-z0-9]+$/.test(p) && p.length < 5) {
+          const regex = new RegExp(`(^|[^a-z0-9])${p}([^a-z0-9]|$)`, 'i');
+          return regex.test(f);
+      }
+      return true;
+  };
+
   for (const t1 of explicitTitles1) {
-      if (vid2.title.includes(t1)) isExplicitSongTitleMatched = true;
+      if (isTitleIncluded(t1, vid2.title)) isExplicitSongTitleMatched = true;
   }
   for (const t2 of explicitTitles2) {
-      if (vid1.title.includes(t2)) isExplicitSongTitleMatched = true;
+      if (isTitleIncluded(t2, vid1.title)) isExplicitSongTitleMatched = true;
   }
 
-  const clean1NoKw = removeNoiseWords(vid1.title, vid1.channel, '');
-  const clean2NoKw = removeNoiseWords(vid2.title, vid2.channel, '');
+  const clean1NoKw = removeNoiseWords(removeNoiseWords(vid1.title, vid1.channel, ''), vid2.channel, '');
+  const clean2NoKw = removeNoiseWords(removeNoiseWords(vid2.title, vid2.channel, ''), vid1.channel, '');
 
   if (brackets1.length > 0 && brackets2.length > 0) {
     for (const b1 of brackets1) {
@@ -193,29 +208,59 @@ export function calculateSimilarity(
   }
 
   if (!isBracketMatched) {
-      const parts1 = extractSignificantParts(vid1.title);
-      const parts2 = extractSignificantParts(vid2.title);
+      const parts1 = extractSignificantParts(cleanTitle1NoChannel);
+      const parts2 = extractSignificantParts(cleanTitle2NoChannel);
 
       const checkCrossMatch = (parts: string[], targetClean: string) => {
           for (const p of parts) {
               const np = removeNoiseWords(p, '', '');
-              // If the matched part is basically the search keyword, skip to prevent false artist matching
-              if (keyword && np.toLowerCase() === keyword.toLowerCase()) continue;
-              if (keyword && np.toLowerCase().includes(keyword.toLowerCase()) && np.length <= keyword.length + 2) continue;
-
+              // We no longer skip based on keyword here, because it breaks cases where the keyword is the song title.
+              // We rely on the isSongTitle logic below and robust channel name stripping.
               if (np.length >= 2) {
                   const { score: s, overlap } = calculateStringSimilarity(np, targetClean);
-                  if (overlap > 85 || (np.length >= 3 && targetClean.includes(np))) {
-                      return true;
+                  
+                  let isMatched = false;
+                  if (np.length < 4) {
+                      if (/^[a-z0-9]+$/i.test(np)) {
+                          if (new RegExp(`(^|\\s)${np}(\\s|$)`, 'i').test(targetClean)) isMatched = true;
+                      } else {
+                          if (targetClean.includes(np)) isMatched = true;
+                      }
+                  } else {
+                      if (targetClean.includes(np)) {
+                          isMatched = true;
+                      }
+                      if (overlap > 85 && (Math.max(np.length, targetClean.length) / Math.min(np.length, targetClean.length) < 1.5)) {
+                          isMatched = true;
+                      }
+                  }
+
+                  if (isMatched) {
+                      // If the matched part is identical to the keyword, it's likely the artist name.
+                      let isSongTitle = false;
+                      if (!keyword || np.toLowerCase() !== keyword.toLowerCase()) {
+                          isSongTitle = true;
+                      } else if (parts.length === 1) {
+                          // If it's the only part left, it must be the song title
+                          isSongTitle = true;
+                      }
+                      return { matched: true, isSongTitle };
                   }
               }
           }
-          return false;
+          return { matched: false, isSongTitle: false };
       };
 
-      if (checkCrossMatch(parts1, clean2NoKw) || checkCrossMatch(parts2, clean1NoKw)) {
-          isBracketMatched = true;
-          bracketMatchMethod = 'cross';
+      const match1 = checkCrossMatch(parts1, clean2NoKw);
+      const match2 = checkCrossMatch(parts2, clean1NoKw);
+
+      if (match1.matched || match2.matched) {
+          if (match1.isSongTitle || match2.isSongTitle) {
+              isExplicitSongTitleMatched = true;
+          } else {
+              isBracketMatched = true;
+              bracketMatchMethod = 'cross';
+          }
           hasBracketMismatch = false; // Override any previous mismatch
       }
   }
@@ -232,8 +277,8 @@ export function calculateSimilarity(
   // 以前のTopicチャンネル対応で入れた includes の条件が緩すぎたため、"I DID IT" (DJ Khaled) と "I'm So Hood" が誤爆していた。
   // それを修正し、ベーススコアによる厳格な評価に戻す
   if (isExplicitSongTitleMatched) {
-      score += 75;
-      reasons.push('曲名(「」内)が一致');
+      score += 80 + (baseScore * 0.1);
+      reasons.push('曲名が一致');
       isBracketMatched = true; 
       hasBracketMismatch = false;
   } else if (isBracketMatched) {
@@ -323,7 +368,7 @@ export function calculateSimilarity(
   let hasCoverOrRemix = false;
   const allV = new Set([...v1, ...v2]);
   for (const v of allV) {
-      if (v === 'cover' || v === '歌ってみた' || v === 'remix' || v === '切り抜き') {
+      if (COVER_REMIX_WORDS.includes(v)) {
           hasCoverOrRemix = true;
       }
   }
