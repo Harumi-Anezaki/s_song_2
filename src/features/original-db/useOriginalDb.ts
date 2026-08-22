@@ -132,7 +132,7 @@ export function useOriginalDb() {
   const evaluationOptions = (state.customEvaluations || []).map(e => ({ label: e, value: e }));
   const singerOptions = state.singers.map(s => ({ label: s.name, value: s.id }));
 
-  const { deleteGlobalTag } = useStore();
+  const { deleteGlobalTag, updateGlobalTag } = useStore();
   const handleDeleteGenre = (val: string) => {
     deleteGlobalTag('genre', val);
   };
@@ -142,6 +142,16 @@ export function useOriginalDb() {
   };
   const handleDeleteEvaluation = (val: string) => {
     deleteGlobalTag('evaluation1', val);
+  };
+
+  const handleUpdateGenre = (oldVal: string, newVal: string) => {
+    updateGlobalTag('genre', oldVal, newVal);
+  };
+  const handleUpdateUsage = (oldVal: string, newVal: string) => {
+    updateGlobalTag('usage', oldVal, newVal);
+  };
+  const handleUpdateEvaluation = (oldVal: string, newVal: string) => {
+    updateGlobalTag('evaluation1', oldVal, newVal);
   };
 
 
@@ -154,7 +164,8 @@ export function useOriginalDb() {
     activeTab, setActiveTab,
     handleAddSong, handleAddSinger,
     genreOptions, usageOptions, locationOptions, evaluationOptions, singerOptions,
-    handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation
+    handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation,
+    handleUpdateGenre, handleUpdateUsage, handleUpdateEvaluation
 
   };
 }

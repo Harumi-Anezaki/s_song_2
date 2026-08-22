@@ -1,46 +1,62 @@
 import { YoutubeSearchResult, SimilarityResult } from '../types';
 import { COMMON_WORDS, VERSION_WORDS, CHANNEL_SUFFIXES, LIVE_PERFORMANCE_WORDS, SHORT_TV_SIZE_WORDS, COVER_REMIX_WORDS } from './similarity-words';
 
-function calculateStringSimilarity(s1: string, s2: string): { score: number, overlap: number } {
-  const w1 = s1.split(/\s+/).filter(Boolean);
-  const w2 = s2.split(/\s+/).filter(Boolean);
-  
-  if (w1.length === 0 || w2.length === 0) return { score: 0, overlap: 0 };
+function getBigrams(str: string): Set<string> {
+  const bigrams = new Set<string>();
+  for (let i = 0; i < str.length - 1; i++) {
+    bigrams.add(str.substring(i, i + 2));
+  }
+  return bigrams;
+}
 
-  const matrix = Array.from({ length: w1.length + 1 }, () => new Array(w2.length + 1).fill(0));
-  
-  for (let i = 1; i <= w1.length; i++) {
-    for (let j = 1; j <= w2.length; j++) {
-      if (w1[i - 1] === w2[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1] + 1;
+function levenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        matrix[i][j] = Math.max(matrix[i - 1][j], matrix[i][j - 1]);
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
       }
     }
   }
-  
-  const lcs = matrix[w1.length][w2.length];
-  const lcsScore = (lcs / Math.max(w1.length, w2.length)) * 100;
-  const lcsOverlap = (lcs / Math.min(w1.length, w2.length)) * 100;
-  
-  let intersect = 0;
-  const used = new Set<number>();
-  for (const w of w1) {
-      for (let j = 0; j < w2.length; j++) {
-          if (w === w2[j] && !used.has(j)) {
-              intersect++;
-              used.add(j);
-              break;
-          }
-      }
+  return matrix[a.length][b.length];
+}
+
+function calculateStringSimilarity(s1: string, s2: string): { score: number, overlap: number } {
+  if (s1.length === 0 || s2.length === 0) return { score: 0, overlap: 0 };
+
+  if (s1.length < 2 || s2.length < 2) {
+    const isMatch = s1 === s2;
+    const isIncluded = s1.length === 1 ? s2.includes(s1) : s1.includes(s2);
+    const distance = levenshteinDistance(s1, s2);
+    const maxLength = Math.max(s1.length, s2.length);
+    const editScore = Math.max(0, (1 - distance / maxLength) * 100);
+    return { score: isMatch ? 100 : editScore, overlap: isIncluded ? 100 : 0 };
   }
   
-  const setScore = (intersect / Math.max(w1.length, w2.length)) * 100;
-  const setOverlap = (intersect / Math.min(w1.length, w2.length)) * 100;
+  const b1 = getBigrams(s1);
+  const b2 = getBigrams(s2);
+  let intersection = 0;
+  for (const b of b1) {
+    if (b2.has(b)) intersection++;
+  }
+  const bigramScore = (intersection / Math.max(b1.size, b2.size)) * 100;
   
-  return { 
-      score: Math.max(lcsScore, setScore), 
-      overlap: Math.max(lcsOverlap, setOverlap)
+  const minSize = Math.min(b1.size, b2.size);
+  const overlap = minSize > 0 ? (intersection / minSize) * 100 : 0;
+
+  const distance = levenshteinDistance(s1, s2);
+  const maxLength = Math.max(s1.length, s2.length);
+  const editScore = Math.max(0, (1 - distance / maxLength) * 100);
+
+  return {
+    score: (bigramScore + editScore) / 2,
+    overlap
   };
 }
 
@@ -51,9 +67,6 @@ export function normalizeTitle(title: string, keyword: string | string[], channe
 function removeNoiseWords(text: string, channelName: string = '', keyword: string | string[] = ''): string {
   let t = text.toLowerCase();
   
-  // (User Request) Remove text inside (), [], 【】, ＜＞, 《》 
-  t = t.replace(/[([【<＜《][^)\]】>＞》]*[)\]】>＞》]/g, ' ');
-
   t = t.replace(/[！-～]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
   t = t.replace(/　/g, ' ');
   
@@ -62,7 +75,7 @@ function removeNoiseWords(text: string, channelName: string = '', keyword: strin
     if (kw) {
       // Escape kw just in case
       const escapedKw = kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      t = t.replace(new RegExp(`(?<![a-zA-Z0-9_])${escapedKw}(?![a-zA-Z0-9_])`, 'g'), ' ');
+      t = t.replace(new RegExp(escapedKw, 'g'), ' ');
     }
   });
   
@@ -118,6 +131,12 @@ function removeChannelName(title: string, channelName: string): string {
     return t;
 }
 
+function extractSignificantParts(title: string): string[] {
+  const brackets = extractBracketContents(title);
+  const parts = title.split(/[()[\]{}【】『』「」|/~〜–—]|\s+-\s+/).map(p => p.trim());
+  return [...brackets, ...parts].filter(p => p.length >= 2);
+}
+
 function hasLiveOrPerformance(title: string): boolean {
   const t = title.toLowerCase();
   return LIVE_PERFORMANCE_WORDS.some(w => t.includes(w));
@@ -136,15 +155,14 @@ function extractVersions(title: string): string[] {
 export function calculateSimilarity(
   vid1: { title: string; duration: number; channel: string; artistName?: string },
   vid2: { title: string; duration: number; channel: string; artistName?: string },
-  keyword: string,
-  dbSingers: string[] = []
+  keyword: string
 ): { score: number; reasons: string[]; warnings: string[] } {
   let score = 0;
   const reasons: string[] = [];
   const warnings: string[] = [];
 
-  const keywords1 = [keyword, ...dbSingers, vid1.artistName].filter(Boolean) as string[];
-  const keywords2 = [keyword, ...dbSingers, vid2.artistName].filter(Boolean) as string[];
+  const keywords1 = [keyword, vid1.artistName].filter(Boolean) as string[];
+  const keywords2 = [keyword, vid2.artistName].filter(Boolean) as string[];
 
   const clean1 = removeNoiseWords(removeNoiseWords(vid1.title, vid1.channel, keywords1), vid2.channel, '');
   const clean2 = removeNoiseWords(removeNoiseWords(vid2.title, vid2.channel, keywords2), vid1.channel, '');
@@ -156,7 +174,9 @@ export function calculateSimilarity(
   let isBracketMatched = false;
   let bracketMatchMethod = '';
 
-      const explicitTitles1 = extractExplicitTitles(vid1.title);
+  const cleanTitle1NoChannel = removeNoiseWords(removeChannelName(vid1.title, vid1.channel), '', vid1.artistName || '');
+  const cleanTitle2NoChannel = removeNoiseWords(removeChannelName(vid2.title, vid2.channel), '', vid2.artistName || '');
+  const explicitTitles1 = extractExplicitTitles(vid1.title);
   const explicitTitles2 = extractExplicitTitles(vid2.title);
   
   let isExplicitSongTitleMatched = false;
@@ -173,10 +193,10 @@ export function calculateSimilarity(
   };
 
   for (const t1 of explicitTitles1) {
-      if (isTitleIncluded(t1, vid2.title)) isExplicitSongTitleMatched = true;
+      if (isTitleIncluded(t1, vid2.title)) isExplicitSongTitleMatched = true; console.log("EXPLICIT MATCH");
   }
   for (const t2 of explicitTitles2) {
-      if (isTitleIncluded(t2, vid1.title)) isExplicitSongTitleMatched = true;
+      if (isTitleIncluded(t2, vid1.title)) isExplicitSongTitleMatched = true; console.log("EXPLICIT MATCH");
   }
 
   const clean1NoKw = removeNoiseWords(removeNoiseWords(vid1.title, vid1.channel, vid1.artistName || ''), vid2.channel, '');
@@ -198,6 +218,70 @@ export function calculateSimilarity(
         }
       }
     }
+  }
+
+  console.log("isBracketMatched:", isBracketMatched); if (!isBracketMatched) {
+      const parts1 = extractSignificantParts(cleanTitle1NoChannel);
+      const parts2 = extractSignificantParts(cleanTitle2NoChannel);
+
+      const checkCrossMatch = (parts: string[], targetClean: string) => {
+          let hasMatch = false;
+          let isSongTitleMatch = false;
+          for (const p of parts) {
+              const np = removeNoiseWords(p, '', '');
+              // We no longer skip based on keyword here, because it breaks cases where the keyword is the song title.
+              // We rely on the isSongTitle logic below and robust channel name stripping.
+              if (np.length >= 2) {
+                  const { score: s, overlap } = calculateStringSimilarity(np, targetClean);
+                  
+                  let isMatched = false;
+                  if (np.length < 4) {
+                      if (/^[a-z0-9]+$/i.test(np)) {
+                          if (new RegExp(`(^|\\s)${np}(\\s|$)`, 'i').test(targetClean)) isMatched = true;
+                      } else {
+                          if (targetClean.includes(np)) isMatched = true;
+                      }
+                  } else {
+                      if (targetClean.includes(np)) {
+                          isMatched = true;
+                      }
+                      if (overlap > 85 && (Math.max(np.length, targetClean.length) / Math.min(np.length, targetClean.length) < 1.5)) {
+                          isMatched = true;
+                      }
+                  }
+
+                  if (isMatched) {
+                      hasMatch = true;
+                      // If the matched part is identical to the keyword, it's likely the artist name.
+                      let isSongTitle = false;
+                      if (!keyword || np.toLowerCase() !== keyword.toLowerCase()) {
+                          isSongTitle = true;
+                      } else if (parts.length === 1) {
+                          // If it's the only part left, it must be the song title
+                          isSongTitle = true;
+                      }
+                      
+                      if (isSongTitle) {
+                          isSongTitleMatch = true;
+                      }
+                  }
+              }
+          }
+          return { matched: hasMatch, isSongTitle: isSongTitleMatch };
+      };
+
+      const match1 = checkCrossMatch(parts1, clean2NoKw);
+      const match2 = checkCrossMatch(parts2, clean1NoKw); console.log("match1:", match1); console.log("match2:", match2);
+
+      if (match1.matched || match2.matched) {
+          if (match1.isSongTitle || match2.isSongTitle) {
+              isExplicitSongTitleMatched = true; console.log("EXPLICIT MATCH");
+          } else {
+              isBracketMatched = true;
+              bracketMatchMethod = 'cross';
+          }
+          hasBracketMismatch = false; // Override any previous mismatch
+      }
   }
 
   const cleanMatch = calculateStringSimilarity(clean1, clean2);

@@ -24,6 +24,9 @@ export function useYoutubeSearch(initialKeyword: string) {
   const setMinViews = (val: number) => updateUiState({ youtubeSearchMinViews: val });
   
   const searchLocation = state.uiState?.youtubeSearchLocation || '';
+  const searchGenre = state.uiState?.youtubeSearchGenre || '';
+  const setSearchGenre = (val: string) => updateUiState({ youtubeSearchGenre: val });
+  const genreOptions = (state.customGenres || []).map(g => ({ label: g, value: g }));
   const setSearchLocation = (val: string) => updateUiState({ youtubeSearchLocation: val });
   
   const [isSearching, setIsSearching] = useState(false);
@@ -62,26 +65,12 @@ export function useYoutubeSearch(initialKeyword: string) {
     setManualSelectedIds(new Set());
 
     // Register singer if not exists
-    const existingSinger = state.singers.find((s) => s.name === keyword);
     const nowIso = new Date().toISOString();
-    if (!existingSinger) {
-      setState((s) => ({
-        ...s,
-        singers: [
-          ...s.singers,
-          {
-            id: generateId(),
-            name: keyword,
-            preference: null,
-            singability: null,
-            createdAt: nowIso,
-            updatedAt: nowIso,
-            lastSearchedAt: nowIso,
-          },
-        ],
-      }));
-    } else {
-      updateSinger(existingSinger.id, { lastSearchedAt: nowIso });
+    const singerId = ensureSinger(keyword, searchLocation);
+    if (singerId) {
+      const updates: any = { lastSearchedAt: nowIso };
+      if (searchLocation) updates.location = searchLocation;
+      updateSinger(singerId, updates);
     }
 
     try {
@@ -90,6 +79,8 @@ export function useYoutubeSearch(initialKeyword: string) {
 
       const getSourcesForSong = (song: any) => {
         const sources = [];
+        const singer = state.singers.find(s => s.id === song.mainSingerId);
+        const artistName = singer?.name || '';
         
         // Use individual mapped videos for similarity comparison
         if (song.urlTitles && song.urlDurationSeconds && song.youtubeIds.length > 0) {
@@ -97,12 +88,13 @@ export function useYoutubeSearch(initialKeyword: string) {
              sources.push({ 
                title: song.urlTitles[i] || song.title, 
                duration: song.urlDurationSeconds[i] || 0, 
-               channel: '' 
+               channel: '',
+               artistName
              });
           });
         } else {
           // Fallback if no underlying videos are found (should not happen for valid DB entries)
-          sources.push({ title: song.title, duration: 0, channel: '' });
+          sources.push({ title: song.title, duration: 0, channel: '', artistName });
         }
         return sources;
       };
@@ -110,7 +102,10 @@ export function useYoutubeSearch(initialKeyword: string) {
       const getSourcesForRes = (res: YoutubeSearchResult) => {
         const song = computedSongs.find(s => s.youtubeIds.includes(res.id));
         if (song) return getSourcesForSong(song);
-        return [{ title: res.title, duration: res.durationSeconds, channel: res.channelTitle }];
+        
+        const singer = res.mainSingerId ? state.singers.find(s => s.id === res.mainSingerId) : undefined;
+        const artistName = singer?.name || '';
+        return [{ title: res.title, duration: res.durationSeconds, channel: res.channelTitle, artistName }];
       };
 
       const getMaxSimilarity = (sourcesA: any[], sourcesB: any[]) => {
@@ -118,7 +113,8 @@ export function useYoutubeSearch(initialKeyword: string) {
         let bestResult = { score: 0, reasons: [] as string[], warnings: [] as string[] };
         for (const a of sourcesA) {
           for (const b of sourcesB) {
-             const res = calculateSimilarity(a, b, keyword);
+             const dbSingers = state.singers.map(s => s.name);
+             const res = calculateSimilarity(a, b, keyword, dbSingers);
              if (res.score > maxScore) {
                 maxScore = res.score;
                 bestResult = res;
@@ -258,15 +254,18 @@ export function useYoutubeSearch(initialKeyword: string) {
       return;
     }
 
-    const singer = state.singers.find(s => s.name === keyword);
+    const singerId = ensureSinger(keyword, searchLocation);
+    if (singerId && searchLocation) {
+      updateSinger(singerId, { location: searchLocation });
+    }
 
     const mapped = newItems.map(r => ({
       title: r.title,
       youtubeIds: [r.id],
-      mainSingerId: r.mainSingerId !== undefined ? r.mainSingerId : (singer ? singer.id : null),
+      mainSingerId: r.mainSingerId !== undefined ? r.mainSingerId : (singerId || null),
       subSingerIds: r.subSingerIds || [],
       location: searchLocation,
-      genre: [],
+      genre: searchGenre ? [searchGenre] : [],
       usage: [],
       evaluation1: '',
       urls: [r.url],
@@ -447,13 +446,18 @@ export function useYoutubeSearch(initialKeyword: string) {
     const totalViews = selected.reduce((acc, s) => acc + s.targetViewCount, 0);
     const oldestDate = selected.map(s => s.targetPublishedAt).sort()[0];
 
+    const singerId = ensureSinger(keyword, searchLocation);
+    if (singerId && searchLocation) {
+      updateSinger(singerId, { location: searchLocation });
+    }
+
     const newSongs = addMergedSongs([{
       title: '統合された曲 (名称未設定)',
       youtubeIds: ids,
-      mainSingerId: state.singers.find(s => s.name === keyword)?.id || null,
+      mainSingerId: singerId || null,
       subSingerIds: [],
       location: searchLocation,
-      genre: [],
+      genre: searchGenre ? [searchGenre] : [],
       usage: [],
       evaluation1: '',
       urls: urls,
@@ -480,6 +484,8 @@ export function useYoutubeSearch(initialKeyword: string) {
     singerOptions, locationOptions,
     minViews, setMinViews,
     searchLocation, setSearchLocation,
+    searchGenre, setSearchGenre,
+    genreOptions,
     isSearching, setIsSearching,
     rawResults, results, setResults,
     updateUnregisteredResult,

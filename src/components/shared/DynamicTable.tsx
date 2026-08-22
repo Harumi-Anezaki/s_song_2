@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, Reorder } from 'motion/react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn, generateId, truncateText } from '../../lib/utils';
 import { AutoResizeTextarea } from '../ui/AutoResizeTextarea';
 import { FilterMultiSelect } from '../ui/FilterMultiSelect';
@@ -203,7 +204,7 @@ export function ViewOptions({ view, onUpdateView, type, optionsMap }: { view: an
   );
 }
 
-export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onDeleteItem, onNavigateToSearch, singers, searchQuery, genreOptions, usageOptions, singerOptions, locationOptions, evaluationOptions, onDeleteGenre, onDeleteUsage, onDeleteEvaluation, ensureSinger, ensureSingers, onFilteredCountChange, onFilteredDataChange }: any) {
+export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onDeleteItem, onNavigateToSearch, singers, searchQuery, genreOptions, usageOptions, singerOptions, locationOptions, evaluationOptions, onDeleteGenre, onDeleteUsage, onDeleteEvaluation, onUpdateGenre, onUpdateUsage, onUpdateEvaluation, ensureSinger, ensureSingers, onFilteredCountChange, onFilteredDataChange }: any) {
   const [mobileEditRow, setMobileEditRow] = React.useState<any>(null);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
@@ -413,9 +414,23 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
 
   // Search/Filter placeholder (skipped full implementation for simplicity, just showing structure)
   // Let's render the basic table.
+  const parentRef = React.useRef<HTMLDivElement>(null);
+  
+  const rowVirtualizer = useVirtualizer({
+    count: sortedData.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 44,
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom = virtualItems.length > 0 ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
+
   return (
-    <div className="inline-block min-w-full align-middle pb-20">
-      <table className="min-w-full border-collapse text-sm" style={{ width: 'max-content' }}>
+    <div ref={parentRef} className="h-full w-full overflow-auto pb-20 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="inline-block min-w-full align-middle">
+        <table className="min-w-full border-collapse text-sm" style={{ width: 'max-content' }}>
         <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-[80]">
           <Reorder.Group 
             as="tr" 
@@ -450,8 +465,15 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
           </Reorder.Group>
         </thead>
         <tbody className="text-xs divide-y divide-slate-100">
-          {sortedData.map((row: any) => (
-            <tr key={row.id} className="hover:bg-slate-50 transition-colors group/row min-h-[44px] sm:min-h-0 cursor-pointer sm:cursor-default" onClick={(e) => { if (isMobile) { setMobileEditRow(row); } }}>
+          {paddingTop > 0 && (
+            <tr>
+              <td style={{ height: `${paddingTop}px` }} colSpan={visibleColumns.length + (onDeleteItem ? 1 : 0)} />
+            </tr>
+          )}
+          {virtualItems.map((virtualRow: any) => {
+            const row = sortedData[virtualRow.index];
+            return (
+            <tr key={row.id} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} className="hover:bg-slate-50 transition-colors group/row min-h-[44px] sm:min-h-0 cursor-pointer sm:cursor-default" onClick={(e) => { if (isMobile) { setMobileEditRow(row); } }}>
               {onDeleteItem && (
                 <td className="px-4 py-3 border-r border-slate-100 text-center sticky left-0 bg-white group-hover/row:bg-slate-50 !z-[50]">
                   <button onClick={(e) => { e.stopPropagation(); onDeleteItem(row.id); }} className="text-slate-400 hover:text-red-600 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity focus:opacity-100">
@@ -486,11 +508,11 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                         </> );
                       }
                       if (colKey === 'genre') {
-                        return ( <>{collapsedColumns[colKey] ? truncateText(Array.isArray(val) ? val.join(', ') : val) : (<NotionSelect value={val || []} options={genreOptions} onChange={(newVal) => onUpdateItem(row.id, { genre: newVal })} onDeleteOption={onDeleteGenre} allowCreate multiple placeholder="未設定" />)}
+                        return ( <>{collapsedColumns[colKey] ? truncateText(Array.isArray(val) ? val.join(', ') : val) : (<NotionSelect value={val || []} options={genreOptions} onChange={(newVal) => onUpdateItem(row.id, { genre: newVal })} onDeleteOption={onDeleteGenre} onUpdateOption={onUpdateGenre} allowCreate multiple placeholder="未設定" />)}
                         </> );
                       }
                       if (colKey === 'usage') {
-                        return ( <>{collapsedColumns[colKey] ? truncateText(Array.isArray(val) ? val.join(', ') : val) : (<NotionSelect value={val || []} options={usageOptions} onChange={(newVal) => onUpdateItem(row.id, { usage: newVal })} onDeleteOption={onDeleteUsage} allowCreate multiple placeholder="未設定" />)}
+                        return ( <>{collapsedColumns[colKey] ? truncateText(Array.isArray(val) ? val.join(', ') : val) : (<NotionSelect value={val || []} options={usageOptions} onChange={(newVal) => onUpdateItem(row.id, { usage: newVal })} onDeleteOption={onDeleteUsage} onUpdateOption={onUpdateUsage} allowCreate multiple placeholder="未設定" />)}
                         </> );
                       }
                       if (colKey === 'mainSingerId') {
@@ -530,7 +552,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                         </> );
                       }
                       if (colKey === 'evaluation1') {
-                        return ( <>{collapsedColumns[colKey] ? truncateText(val) : (<NotionSelect value={val || ''} options={evaluationOptions} onChange={(newVal) => onUpdateItem(row.id, { evaluation1: newVal })} onDeleteOption={onDeleteEvaluation} allowCreate placeholder="未設定" />)}
+                        return ( <>{collapsedColumns[colKey] ? truncateText(val) : (<NotionSelect value={val || ''} options={evaluationOptions} onChange={(newVal) => onUpdateItem(row.id, { evaluation1: newVal })} onDeleteOption={onDeleteEvaluation} onUpdateOption={onUpdateEvaluation} allowCreate placeholder="未設定" />)}
                         </> );
                       }
                       if (colKey === 'releaseDate') {
@@ -635,7 +657,13 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                  );
               })}
             </tr>
-          ))}
+            );
+          })}
+          {paddingBottom > 0 && (
+            <tr>
+              <td style={{ height: `${paddingBottom}px` }} colSpan={visibleColumns.length + (onDeleteItem ? 1 : 0)} />
+            </tr>
+          )}
         </tbody>
       </table>
       {mobileEditRow && isMobile && (
@@ -663,9 +691,9 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                 if (colKey === 'title') {
                   cellContent = <AutoResizeTextarea value={val || ''} onChange={(e) => { onUpdateItem(mobileEditRow.id, { [colKey]: e.target.value }); setMobileEditRow({...mobileEditRow, [colKey]: e.target.value}); }} className="border border-slate-300 focus:border-blue-500 rounded p-3 w-full bg-white text-base" />;
                 } else if (colKey === 'genre') {
-                  cellContent = <NotionSelect value={val || []} options={genreOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { genre: newVal }); setMobileEditRow({...mobileEditRow, genre: newVal}); }} onDeleteOption={onDeleteGenre} allowCreate multiple placeholder="ジャンルを追加..." />;
+                  cellContent = <NotionSelect value={val || []} options={genreOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { genre: newVal }); setMobileEditRow({...mobileEditRow, genre: newVal}); }} onDeleteOption={onDeleteGenre} onUpdateOption={onUpdateGenre} allowCreate multiple placeholder="ジャンルを追加..." />;
                 } else if (colKey === 'usage') {
-                  cellContent = <NotionSelect value={val || []} options={usageOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { usage: newVal }); setMobileEditRow({...mobileEditRow, usage: newVal}); }} onDeleteOption={onDeleteUsage} allowCreate multiple placeholder="用途を追加..." />;
+                  cellContent = <NotionSelect value={val || []} options={usageOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { usage: newVal }); setMobileEditRow({...mobileEditRow, usage: newVal}); }} onDeleteOption={onDeleteUsage} onUpdateOption={onUpdateUsage} allowCreate multiple placeholder="用途を追加..." />;
                 } else if (colKey === 'mainSingerId') {
                   cellContent = <NotionSelect value={val || ''} options={singerOptions} onChange={(newVal) => { const newId = ensureSinger(newVal); onUpdateItem(mobileEditRow.id, { mainSingerId: newId || null }); setMobileEditRow({...mobileEditRow, mainSingerId: newId || null}); }} allowCreate placeholder="歌手を設定..." />;
                 } else if (colKey === 'subSingerIds') {
@@ -673,7 +701,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
                 } else if (colKey === 'location') {
                   cellContent = <div className="text-slate-700 bg-slate-50 p-3 rounded">{String(val || '-')}</div>;
                 } else if (colKey === 'evaluation1') {
-                  cellContent = <NotionSelect value={val || ''} options={evaluationOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { evaluation1: newVal }); setMobileEditRow({...mobileEditRow, evaluation1: newVal}); }} onDeleteOption={onDeleteEvaluation} allowCreate placeholder="評価..." />;
+                  cellContent = <NotionSelect value={val || ''} options={evaluationOptions} onChange={(newVal) => { onUpdateItem(mobileEditRow.id, { evaluation1: newVal }); setMobileEditRow({...mobileEditRow, evaluation1: newVal}); }} onDeleteOption={onDeleteEvaluation} onUpdateOption={onUpdateEvaluation} allowCreate placeholder="評価..." />;
                 } else {
                   cellContent = <div className="text-slate-700 bg-slate-50 p-3 rounded">{String(val || '-')}</div>;
                 }
@@ -718,6 +746,7 @@ export function DynamicTable({ view, data, onUpdateView, type, onUpdateItem, onD
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

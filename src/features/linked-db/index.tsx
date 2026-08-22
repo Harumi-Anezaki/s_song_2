@@ -31,9 +31,17 @@ export default function LinkedDb() {
     filteredCount, setFilteredCount,
     genreOptions, usageOptions, singerOptions, locationOptions, evaluationOptions,
     handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation,
+    handleUpdateGenre, handleUpdateUsage, handleUpdateEvaluation,
     activeView
   } = useLinkedDb();
   const { state, setState, addView, updateView, deleteView, updateSong, updateSinger, getComputedSongs, getComputedSingers, ensureSinger, ensureSingers, deleteGlobalTag, updateUiState } = useStore();
+
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 640 : false);
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   return (
     <div className={`h-full flex flex-col overflow-hidden ${isMusicMode ? 'bg-[#121212]' : 'bg-white'}`}>
@@ -66,8 +74,9 @@ export default function LinkedDb() {
               as="div"
               value={v}
               key={v.id}
+              dragListener={!isMobile}
               onClick={() => setActiveViewId(v.id)}
-              className={cn("px-3 min-h-[44px] py-1.5 text-base sm:text-sm font-medium rounded-t-md cursor-grab active:cursor-grabbing whitespace-nowrap flex items-center gap-2 select-none transition-colors", activeViewId === v.id ? (isMusicMode ? "bg-[#282828] text-white" : "bg-white border border-b-0 border-slate-200 text-blue-600") : (isMusicMode ? "text-gray-400 hover:bg-white/10 hover:text-gray-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"))}
+              className={cn("px-3 min-h-[44px] py-1.5 text-base sm:text-sm font-medium rounded-t-md whitespace-nowrap flex items-center gap-2 select-none transition-colors", !isMobile ? "cursor-grab active:cursor-grabbing" : "cursor-pointer", activeViewId === v.id ? (isMusicMode ? "bg-[#282828] text-white" : "bg-white border border-b-0 border-slate-200 text-blue-600") : (isMusicMode ? "text-gray-400 hover:bg-white/10 hover:text-gray-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"))}
             >
               {activeViewId === v.id ? (
                 <div className="relative flex items-center min-w-[2rem]">
@@ -121,7 +130,7 @@ export default function LinkedDb() {
                }} />
                </div>
             </div>
-            <div className="flex-1 overflow-auto bg-white relative">
+            <div className="flex-1 overflow-hidden bg-white relative">
               <DynamicTable
                  view={activeView}
                  data={activeView.sourceDb === 'song' ? getComputedSongs() : getComputedSingers()}
@@ -140,6 +149,9 @@ export default function LinkedDb() {
                  onDeleteGenre={handleDeleteGenre}
                  onDeleteUsage={handleDeleteUsage}
                  onDeleteEvaluation={handleDeleteEvaluation}
+                 onUpdateGenre={handleUpdateGenre}
+                 onUpdateUsage={handleUpdateUsage}
+                 onUpdateEvaluation={handleUpdateEvaluation}
                  ensureSinger={ensureSinger}
                  ensureSingers={ensureSingers}
               />

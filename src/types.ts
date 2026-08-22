@@ -110,6 +110,7 @@ export type AppState = {
     searchKeyword?: string;
     youtubeSearchMinViews?: number;
     youtubeSearchLocation?: string;
+    youtubeSearchGenre?: string;
     youtubeSearchResults?: YoutubeSearchResult[];
     youtubeSearchSelectedIds?: string[];
     youtubeSearchManualSelectedIds?: string[];

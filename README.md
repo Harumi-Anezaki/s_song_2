@@ -89,8 +89,31 @@ VITE_FIREBASE_APP_ID="your_app_id"
 npm run dev
 ```
 
-## JSONデータの完全復元について
+## クラウド同期とエクスポートの仕様
 
-本アプリの「設定」タブからエクスポートできるJSONファイルには、登録された楽曲・歌手のデータだけでなく、**現在のUI状態（開いているタブ、リンクドDBの表示状態、カラムの幅、各種入力欄の検索キーワードなど）がすべて含まれています**。
-そのため、他の端末や別アカウントのアプリでこのJSONをインポートすると、全く同じ作業状態を完全に再現することができます。
-また、後方互換性（例: 「場所」カラムの曲DBからの移行）のためのマイグレーション処理もインポート時に自動で実行されます。
+本アプリは、端末間での作業をシームレスにするためにFirebaseでのクラウド同期と、バックアップ用のJSONエクスポート機能を提供しています。
+セキュリティと利便性を両立するため、データによって同期・エクスポートの対象となるかが分かれています。
+
+### Firebaseに同期される情報（他端末と共有されるデータ）
+*   `youtubeApiKey`: YouTube APIキー（自分の別端末でも検索機能を有効にするため同期）
+*   `songs`, `singers`: 曲・歌手データベース
+*   `linkedViews`: 作成したカスタムタブ（Linked DB）の設定
+*   `customGenres`, `customUsages`, `customEvaluations`: 独自に追加したタグ一覧
+*   `excludedYoutubeIds`: 検索で除外設定したIDリスト
+
+### Firebase同期から除外される情報
+*   `uiState`: 検索キーワードやサイドバーの開閉などの一時的なUI状態
+*   `lastOpenViewId`: 最後に開いていたタブ
+
+---
+
+### JSONファイルにエクスポートされる情報（バックアップ用）
+*   `songs`, `singers`: 曲・歌手データベース
+*   `linkedViews`: 作成したカスタムタブ（Linked DB）の設定
+*   `customGenres`, `customUsages`, `customEvaluations`: 独自に追加したタグ一覧
+*   `excludedYoutubeIds`: 検索で除外設定したIDリスト
+
+### JSONエクスポートから除外される情報（セキュリティ・一時データ）
+*   **`youtubeApiKey`: YouTube APIキー（他人にファイルを共有した際の漏洩を防ぐため厳格に除外）**
+*   `uiState`: 検索キーワードやサイドバーの開閉などの一時的なUI状態
+*   `lastOpenViewId`: 最後に開いていたタブ

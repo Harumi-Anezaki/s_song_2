@@ -14,9 +14,10 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
 
   const {
     keyword, setKeyword,
-    singerOptions, locationOptions,
+    singerOptions, locationOptions, genreOptions,
     minViews, setMinViews,
     searchLocation, setSearchLocation,
+    searchGenre, setSearchGenre,
     isSearching, setIsSearching,
     rawResults, results, setResults,
     updateUnregisteredResult,
@@ -62,9 +63,9 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
             </button>
           </div>
         </div>
-        <div className="flex flex-col sm:grid sm:grid-cols-12 gap-4 items-end">
-          <div className="w-full sm:col-span-4">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">検索キーワード (歌手名)</label>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-end">
+          <div className="w-full sm:flex-1 sm:min-w-[200px]">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">検索キーワード (歌手名)</label>
             <input
               type="text"
               placeholder="歌手名を入力..."
@@ -73,8 +74,8 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               className="w-full border border-slate-300 rounded px-3 py-3 sm:py-2 min-h-[44px] bg-slate-50 focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none text-base sm:text-sm"
             />
           </div>
-          <div className="w-full sm:col-span-3">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">最低再生回数制限</label>
+          <div className="w-full sm:w-auto shrink-0">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">最低再生回数制限</label>
             <select
               value={minViews}
               onChange={(e) => setMinViews(Number(e.target.value))}
@@ -86,8 +87,8 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               <option value={100000000}>1億回 (8000万回〜)</option>
             </select>
           </div>
-          <div className="w-full sm:col-span-2">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">言語</label>
+          <div className="w-full sm:w-auto shrink-0">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">言語</label>
             <select
               value={searchLocation}
               onChange={(e) => setSearchLocation(e.target.value)}
@@ -99,7 +100,20 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
               ))}
             </select>
           </div>
-          <div className="w-full sm:col-span-3">
+          <div className="w-full sm:w-auto shrink-0">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">ジャンル</label>
+            <select
+              value={searchGenre}
+              onChange={(e) => setSearchGenre(e.target.value)}
+              className="w-full border border-slate-300 rounded px-3 py-3 sm:py-2 min-h-[44px] bg-slate-50 outline-none text-base sm:text-sm"
+            >
+              <option value="">未設定</option>
+              {genreOptions.map(g => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="w-full sm:w-32 shrink-0">
             <button
               onClick={handleSearch}
               disabled={isSearching}
@@ -267,7 +281,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             value={registeredSong.mainSingerId || ''} 
                             options={singerOptions} 
                             onChange={(val: any) => {
-                              const newId = ensureSinger(val);
+                              const newId = ensureSinger(val, searchLocation);
                               updateSong(registeredSong.id, { mainSingerId: newId || null });
                             }}
                             allowCreate
@@ -278,7 +292,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             value={res.mainSingerId !== undefined ? (res.mainSingerId || '') : (currentSinger?.id || '')} 
                             options={singerOptions} 
                             onChange={(val: any) => {
-                              const newId = ensureSinger(val);
+                              const newId = ensureSinger(val, searchLocation);
                               updateUnregisteredResult(res.id, { mainSingerId: newId || null });
                             }}
                             allowCreate
@@ -292,7 +306,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             value={registeredSong.subSingerIds || []} 
                             options={singerOptions} 
                             onChange={(val: any) => {
-                              const newIds = ensureSingers(Array.isArray(val) ? val : [val]);
+                              const newIds = ensureSingers(Array.isArray(val) ? val : [val], searchLocation);
                               updateSong(registeredSong.id, { subSingerIds: newIds });
                             }} 
                             allowCreate
@@ -304,7 +318,7 @@ export default function YoutubeSearch({ initialKeyword }: { initialKeyword: stri
                             value={res.subSingerIds || []} 
                             options={singerOptions} 
                             onChange={(val: any) => {
-                              const newIds = ensureSingers(Array.isArray(val) ? val : [val]);
+                              const newIds = ensureSingers(Array.isArray(val) ? val : [val], searchLocation);
                               updateUnregisteredResult(res.id, { subSingerIds: newIds });
                             }} 
                             allowCreate

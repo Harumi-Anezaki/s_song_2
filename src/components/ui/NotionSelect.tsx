@@ -36,6 +36,7 @@ type NotionSelectProps = {
   options: Option[];
   onChange: (value: any) => void;
   onDeleteOption?: (value: string) => void;
+  onUpdateOption?: (oldValue: string, newValue: string) => void;
   multiple?: boolean;
   allowCreate?: boolean;
   placeholder?: string;
@@ -48,6 +49,7 @@ export function NotionSelect({
   options,
   onChange,
   onDeleteOption,
+  onUpdateOption,
   multiple = false,
   allowCreate = false,
   placeholder = '',
@@ -61,6 +63,7 @@ export function NotionSelect({
   
   // 編集メニュー（削除）用のステート
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => {
@@ -243,13 +246,49 @@ export function NotionSelect({
           ) : activeMenu ? (
             <div className="flex flex-col">
               <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                <span className="text-xs font-bold">{activeMenu}</span>
+                <span className="text-xs font-bold text-slate-500">選択肢を編集</span>
                 <button className="text-slate-400 hover:text-slate-600" onClick={() => setActiveMenu(null)}><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-1">
+              <div className="px-3 py-2 border-b border-slate-100">
+                <input
+                  type="text"
+                  autoFocus
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && editName.trim() && editName !== activeMenu) {
+                      if (onUpdateOption) onUpdateOption(activeMenu, editName.trim());
+                      setActiveMenu(null);
+                    }
+                  }}
+                  className="w-full text-sm outline-none bg-slate-50 border border-slate-200 rounded px-2 py-1 focus:border-blue-300"
+                />
+              </div>
+              <div className="p-1 flex flex-col gap-1">
+                 <button
+                   className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-xs font-bold transition-colors disabled:opacity-50"
+                   disabled={!editName.trim() || editName === activeMenu}
+                   onClick={() => {
+                     if (editName.trim() && editName !== activeMenu && onUpdateOption) {
+                       onUpdateOption(activeMenu, editName.trim());
+                       setActiveMenu(null);
+                     }
+                   }}
+                   onTouchStart={(e) => {
+                     // e.preventDefault(); // Don't prevent default, just do the action immediately
+                     if (editName.trim() && editName !== activeMenu && onUpdateOption) {
+                       onUpdateOption(activeMenu, editName.trim());
+                       setActiveMenu(null);
+                     }
+                   }}
+                   
+                 >
+                   名前を変更
+                 </button>
                  <button 
-                   className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 rounded text-xs text-slate-700"
-                   onClick={() => setShowDeleteConfirm(activeMenu)}
+                   className="w-full flex items-center justify-center gap-2 px-3 py-1.5 hover:bg-red-50 text-red-500 rounded text-xs font-bold transition-colors"
+                   onClick={() => setShowDeleteConfirm(activeMenu)} onTouchStart={() => setShowDeleteConfirm(activeMenu)}
+                   
                  >
                    <Trash2 className="w-4 h-4" />
                    削除
@@ -291,6 +330,7 @@ export function NotionSelect({
                             onClick={(e) => {
                               e.stopPropagation();
                               setActiveMenu(opt.value);
+                              setEditName(opt.value);
                             }}
                           >
                             <MoreHorizontal className="w-4 h-4 text-slate-400" />

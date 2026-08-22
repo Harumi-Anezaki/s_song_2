@@ -4,7 +4,7 @@ import { useStore } from '../../store/StoreContext';
 import { LinkedDbView } from '../../types';
 
 export function useLinkedDb() {
-    const { state, setState, addView, updateView, deleteView, updateSong, updateSinger, getComputedSongs, getComputedSingers, ensureSinger, ensureSingers, deleteGlobalTag, updateUiState } = useStore();
+    const { state, setState, addView, updateView, deleteView, updateSong, updateSinger, getComputedSongs, getComputedSingers, ensureSinger, ensureSingers, deleteGlobalTag, updateGlobalTag, updateUiState } = useStore();
   const isMusicMode = state.uiState?.linkedDbIsMusicMode || false;
   const setIsMusicMode = (val: boolean) => updateUiState({ linkedDbIsMusicMode: val });
   const [currentPlaylist, setCurrentPlaylist] = useState<any[]>([]);
@@ -46,6 +46,15 @@ export function useLinkedDb() {
     const handleDeleteEvaluation = (val: string) => {
       deleteGlobalTag('evaluation1', val);
     };
+    const handleUpdateGenre = (oldVal: string, newVal: string) => {
+      updateGlobalTag('genre', oldVal, newVal);
+    };
+    const handleUpdateUsage = (oldVal: string, newVal: string) => {
+      updateGlobalTag('usage', oldVal, newVal);
+    };
+    const handleUpdateEvaluation = (oldVal: string, newVal: string) => {
+      updateGlobalTag('evaluation1', oldVal, newVal);
+    };
 
   const activeView = state.linkedViews.find((v: LinkedDbView) => v.id === activeViewId);
 
@@ -61,6 +70,7 @@ export function useLinkedDb() {
     filteredCount, setFilteredCount,
     genreOptions, usageOptions, singerOptions, locationOptions, evaluationOptions,
     handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation,
+    handleUpdateGenre, handleUpdateUsage, handleUpdateEvaluation,
     activeView
 
   };

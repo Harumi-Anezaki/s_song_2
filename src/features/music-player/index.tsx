@@ -1,5 +1,6 @@
 import { useMusicPlayer } from './useMusicPlayer';
 import React from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import _ReactPlayer from 'react-player';
 const ReactPlayer = (_ReactPlayer as any).default || _ReactPlayer;
 import { Play, Pause, SkipForward, SkipBack, Shuffle, Repeat, Music, ChevronDown, Clock, Bell } from 'lucide-react';
@@ -30,6 +31,14 @@ export function MusicPlayerMode({ songs, onClose }: MusicPlayerModeProps) {
     currentSong, playingUrl, thumbnailUrl, formatTime
   } = useMusicPlayer(songs);
 
+  const parentRef = React.useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: songs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 68, // ~64px content + 4px spacing
+    overscan: 10,
+  });
+
   if (!songs || songs.length === 0) {
     return (
       <div className="flex-1 bg-[#121212] text-white flex flex-col items-center justify-center p-8">
@@ -59,38 +68,53 @@ export function MusicPlayerMode({ songs, onClose }: MusicPlayerModeProps) {
       </div>
 
       {/* Track List */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6 pb-32 sm:pb-32 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <div className="max-w-4xl mx-auto space-y-1">
-          {songs.map((song, idx) => {
+      <div ref={parentRef} className="flex-1 overflow-auto p-4 sm:p-6 pb-32 sm:pb-32 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="max-w-4xl mx-auto relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const idx = virtualRow.index;
+            const song = songs[idx];
             const isActive = idx === currentIndex;
             return (
               <div 
                 key={song.id} 
-                className={cn(
-                  "flex items-center justify-between py-3 px-4 mx-2 rounded-md cursor-pointer transition-colors",
-                  isActive ? "bg-white/10" : "hover:bg-white/5 active:bg-white/10"
-                )}
-                onClick={() => {
-                  setCurrentIndex(idx);
-                  setIsPlaying(true);
+                ref={rowVirtualizer.measureElement}
+                data-index={idx}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                  paddingBottom: '4px'
                 }}
               >
-                <div className="flex flex-col flex-1 min-w-0 pr-4">
-                  <div className={cn("text-base font-medium truncate", isActive ? "text-green-500 font-bold" : "text-white")}>
-                    {song.title}
+                <div
+                  className={cn(
+                    "flex items-center justify-between py-3 px-4 mx-2 rounded-md cursor-pointer transition-colors",
+                    isActive ? "bg-white/10" : "hover:bg-white/5 active:bg-white/10"
+                  )}
+                  onClick={() => {
+                    setCurrentIndex(idx);
+                    setIsPlaying(true);
+                  }}
+                >
+                  <div className="flex flex-col flex-1 min-w-0 pr-4">
+                    <div className={cn("text-base font-medium truncate", isActive ? "text-green-500 font-bold" : "text-white")}>
+                      {song.title}
+                    </div>
+                    <div className="text-sm text-gray-400 truncate">
+                      {song._mainSingerName || 'Unknown Artist'}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-400 truncate">
-                    {song._mainSingerName || 'Unknown Artist'}
-                  </div>
+                  {/* On PC, we can show a small visualizer or something, but we'll keep it simple */}
+                  {isActive && (
+                     <div className="hidden sm:flex shrink-0 w-4 h-4 items-end gap-[2px]">
+                       <div className="w-[3px] bg-green-500 animate-[bounce_1s_infinite] h-full" />
+                       <div className="w-[3px] bg-green-500 animate-[bounce_1.2s_infinite] h-2/3" />
+                       <div className="w-[3px] bg-green-500 animate-[bounce_0.8s_infinite] h-4/5" />
+                     </div>
+                  )}
                 </div>
-                {/* On PC, we can show a small visualizer or something, but we'll keep it simple */}
-                {isActive && (
-                   <div className="hidden sm:flex shrink-0 w-4 h-4 items-end gap-[2px]">
-                     <div className="w-[3px] bg-green-500 animate-[bounce_1s_infinite] h-full" />
-                     <div className="w-[3px] bg-green-500 animate-[bounce_1.2s_infinite] h-2/3" />
-                     <div className="w-[3px] bg-green-500 animate-[bounce_0.8s_infinite] h-4/5" />
-                   </div>
-                )}
               </div>
             );
           })}

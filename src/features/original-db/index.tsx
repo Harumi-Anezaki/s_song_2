@@ -27,7 +27,8 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
     activeTab, setActiveTab,
     handleAddSong, handleAddSinger,
     genreOptions, usageOptions, locationOptions, evaluationOptions, singerOptions,
-    handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation
+    handleDeleteGenre, handleDeleteUsage, handleDeleteEvaluation,
+    handleUpdateGenre, handleUpdateUsage, handleUpdateEvaluation
   } = useOriginalDb();
   const { updateSong, deleteSong, updateSinger, deleteSinger, ensureSinger, ensureSingers, state } = useStore();
 
@@ -74,7 +75,7 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
 
       <div className="flex-1 overflow-hidden relative flex flex-col">
         {activeTab === 'song' ? (
-          <div className="flex-1 overflow-auto bg-white relative">
+          <div className="flex-1 overflow-hidden bg-white relative">
           <DynamicTable
             view={{ ...songView, sorts: [], filters: [], hiddenColumns: [] }}
             data={computedSongs}
@@ -92,6 +93,9 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
             onDeleteGenre={handleDeleteGenre}
             onDeleteUsage={handleDeleteUsage}
             onDeleteEvaluation={handleDeleteEvaluation}
+            onUpdateGenre={handleUpdateGenre}
+            onUpdateUsage={handleUpdateUsage}
+            onUpdateEvaluation={handleUpdateEvaluation}
             ensureSinger={ensureSinger}
             ensureSingers={ensureSingers}
             onFilteredCountChange={() => {}}
@@ -99,7 +103,7 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
           />
         </div>
         ) : (
-          <div className="flex-1 overflow-auto bg-white relative">
+          <div className="flex-1 overflow-hidden bg-white relative">
           <DynamicTable
             view={{ ...singerView, sorts: [], filters: [], hiddenColumns: [] }}
             data={computedSingers}
@@ -115,6 +119,12 @@ export default function OriginalDb({ onNavigateToSearch }: { onNavigateToSearch:
             singerOptions={singerOptions}
             locationOptions={locationOptions}
             evaluationOptions={evaluationOptions}
+            onDeleteGenre={handleDeleteGenre}
+            onDeleteUsage={handleDeleteUsage}
+            onDeleteEvaluation={handleDeleteEvaluation}
+            onUpdateGenre={handleUpdateGenre}
+            onUpdateUsage={handleUpdateUsage}
+            onUpdateEvaluation={handleUpdateEvaluation}
             ensureSinger={ensureSinger}
             ensureSingers={ensureSingers}
             onFilteredCountChange={() => {}}

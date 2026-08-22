@@ -15,8 +15,8 @@ type StoreContextType = {
   deleteSong: (id: string) => void;
   updateSinger: (id: string, updates: Partial<Singer>) => void;
   deleteSinger: (id: string) => void;
-  ensureSinger: (nameOrId: string) => string;
-  ensureSingers: (namesOrIds: string[]) => string[];
+  ensureSinger: (nameOrId: string, location?: string) => string;
+  ensureSingers: (namesOrIds: string[], location?: string) => string[];
   addMergedSongs: (songs: Partial<Song>[]) => Song[];
   addExcludedYoutubeIds: (ids: string[]) => void;
   removeExcludedYoutubeId: (id: string) => void;
@@ -30,6 +30,7 @@ type StoreContextType = {
   importData: (data: string) => void;
   exportData: () => string;
   deleteGlobalTag: (type: 'genre' | 'usage' | 'evaluation1', tag: string) => void;
+  updateGlobalTag: (type: 'genre' | 'usage' | 'evaluation1', oldTag: string, newTag: string) => void;
 };
 
 const defaultState: AppState = {
@@ -189,7 +190,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
     setState((s) => ({ ...s, singers: s.singers.filter((singer) => singer.id !== id) }));
   };
 
-  const ensureSinger = (nameOrId: string) => {
+  const ensureSinger = (nameOrId: string, location?: string) => {
     if (!nameOrId) return '';
     const existing = state.singers.find(singer => singer.id === nameOrId);
     if (existing) return existing.id;
@@ -206,6 +207,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
           {
             id: newId,
             name: nameOrId,
+            location: location || '',
             preference: null,
             singability: null,
             createdAt: new Date().toISOString(),
@@ -217,7 +219,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
     return newId;
   };
 
-  const ensureSingers = (namesOrIds: string[]) => namesOrIds.map(ensureSinger).filter(Boolean);
+  const ensureSingers = (namesOrIds: string[], location?: string) => namesOrIds.map(n => ensureSinger(n, location)).filter(Boolean);
 
   const addMergedSongs = (newSongs: Partial<Song>[]) => {
     const now = new Date().toISOString();
@@ -266,6 +268,65 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (e) {
       console.error('Import failed. Invalid JSON.', e);
     }
+  };
+
+  const updateGlobalTag = (type: 'genre' | 'usage' | 'evaluation1', oldTag: string, newTag: string) => {
+
+    if (!newTag || oldTag === newTag) return;
+    setState(s => {
+      let nextCustomGenres = [...(s.customGenres || [])];
+      let nextCustomUsages = [...(s.customUsages || [])];
+      let nextCustomEvals = [...(s.customEvaluations || [])];
+      
+      if (type === 'genre') {
+        const idx = nextCustomGenres.indexOf(oldTag);
+        if (idx !== -1) nextCustomGenres[idx] = newTag;
+      }
+      if (type === 'usage') {
+        const idx = nextCustomUsages.indexOf(oldTag);
+        if (idx !== -1) nextCustomUsages[idx] = newTag;
+      }
+      if (type === 'evaluation1') {
+        const idx = nextCustomEvals.indexOf(oldTag);
+        if (idx !== -1) nextCustomEvals[idx] = newTag;
+      }
+
+      return {
+        ...s,
+        customGenres: nextCustomGenres,
+        customUsages: nextCustomUsages,
+        customEvaluations: nextCustomEvals,
+        songs: s.songs.map(song => {
+          let updated = false;
+          let newSong = { ...song, updatedAt: new Date().toISOString() };
+          
+          if (type === 'genre' && Array.isArray(song.genre)) {
+            const idx = song.genre.indexOf(oldTag);
+            if (idx !== -1) {
+              const nextGenre = [...song.genre];
+              nextGenre[idx] = newTag;
+              newSong.genre = nextGenre;
+              updated = true;
+            }
+          }
+          if (type === 'usage' && Array.isArray(song.usage)) {
+            const idx = song.usage.indexOf(oldTag);
+            if (idx !== -1) {
+              const nextUsage = [...song.usage];
+              nextUsage[idx] = newTag;
+              newSong.usage = nextUsage;
+              updated = true;
+            }
+          }
+          if (type === 'evaluation1' && song.evaluation1 === oldTag) {
+            newSong.evaluation1 = newTag;
+            updated = true;
+          }
+          
+          return updated ? newSong : song;
+        })
+      };
+    });
   };
 
   const deleteGlobalTag = (type: 'genre' | 'usage' | 'evaluation1', tag: string) => {
@@ -406,6 +467,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
         importData,
         exportData,
         deleteGlobalTag,
+        updateGlobalTag,
       }}
     >
       {children}
